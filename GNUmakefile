@@ -33,7 +33,7 @@ LDLIBS += $(shell test -f `gcc -print-file-name=librt.so` && echo -lrt)
 LDLIBS += $(shell test -f `gcc -print-file-name=libdl.so` && echo -ldl)
 CC = g++
 CXX = g++
-
+all: lab
 lab:  lab$(LAB)
 lab1: part1_tester chfs_client
 #lab2: chfs_client 

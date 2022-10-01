@@ -3,13 +3,13 @@
 #ifndef extent_server_h
 #define extent_server_h
 
-#include <string>
-#include <map>
 #include "extent_protocol.h"
 #include "inode_manager.h"
+#include <map>
+#include <string>
 
 class extent_server {
- protected:
+protected:
 #if 0
   typedef struct extent {
     std::string data;
@@ -19,21 +19,14 @@ class extent_server {
 #endif
   inode_manager *im;
 
- public:
+public:
   extent_server();
 
   int create(uint32_t type, extent_protocol::extentid_t &id);
-  int put(extent_protocol::extentid_t id, std::string, int &);
-  int get(extent_protocol::extentid_t id, std::string &);
+  int put(extent_protocol::extentid_t id, std::vector<uint8_t>, int &);
+  int get(extent_protocol::extentid_t id, std::vector<uint8_t> &);
   int getattr(extent_protocol::extentid_t id, extent_protocol::attr &);
   int remove(extent_protocol::extentid_t id, int &);
 };
 
-#endif 
-
-
-
-
-
-
-
+#endif

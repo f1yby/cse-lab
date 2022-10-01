@@ -6,10 +6,13 @@
 #include "rpc.h"
 
 class extent_protocol {
- public:
+public:
   typedef int status;
   typedef unsigned long long extentid_t;
-  enum xxstatus { OK, RPCERR, NOENT, IOERR };
+  enum xxstatus { OK,
+                  RPCERR,
+                  NOENT,
+                  IOERR };
   enum rpc_numbers {
     put = 0x6001,
     get,
@@ -32,8 +35,7 @@ class extent_protocol {
 };
 
 inline unmarshall &
-operator>>(unmarshall &u, extent_protocol::attr &a)
-{
+operator>>(unmarshall &u, extent_protocol::attr &a) {
   u >> a.type;
   u >> a.atime;
   u >> a.mtime;
@@ -43,8 +45,7 @@ operator>>(unmarshall &u, extent_protocol::attr &a)
 }
 
 inline marshall &
-operator<<(marshall &m, extent_protocol::attr a)
-{
+operator<<(marshall &m, extent_protocol::attr a) {
   m << a.type;
   m << a.atime;
   m << a.mtime;
@@ -53,4 +54,4 @@ operator<<(marshall &m, extent_protocol::attr a)
   return m;
 }
 
-#endif 
+#endif
