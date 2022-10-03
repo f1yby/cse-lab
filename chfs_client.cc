@@ -9,26 +9,22 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-chfs_client::chfs_client() {
-  ec = new extent_client();
-}
+chfs_client::chfs_client() { ec = new extent_client(); }
 
 chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
   ec = new extent_client();
-  if (ec->put(1, "") != extent_protocol::OK)
+  if (ec->put(1, {0}) != extent_protocol::OK)
     printf("error init root dir\n");// XYB: init root dir
 }
 
-chfs_client::inum
-chfs_client::n2i(std::string n) {
+chfs_client::inum chfs_client::n2i(std::string n) {
   std::istringstream ist(n);
   unsigned long long finum;
   ist >> finum;
   return finum;
 }
 
-std::string
-chfs_client::filename(inum inum) {
+std::string chfs_client::filename(inum inum) {
   std::ostringstream ost;
   ost << inum;
   return ost.str();
@@ -98,13 +94,13 @@ release:
 }
 
 
-#define EXT_RPC(xx)                                          \
-  do {                                                       \
-    if ((xx) != extent_protocol::OK) {                       \
-      printf("EXT_RPC Error: %s:%d \n", __FILE__, __LINE__); \
-      r = IOERR;                                             \
-      goto release;                                          \
-    }                                                        \
+#define EXT_RPC(xx)                                                            \
+  do {                                                                         \
+    if ((xx) != extent_protocol::OK) {                                         \
+      printf("EXT_RPC Error: %s:%d \n", __FILE__, __LINE__);                   \
+      r = IOERR;                                                               \
+      goto release;                                                            \
+    }                                                                          \
   } while (0)
 
 // Only support set size of attr
@@ -120,7 +116,8 @@ int chfs_client::setattr(inum ino, size_t size) {
   return r;
 }
 
-int chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out) {
+int chfs_client::create(inum parent, const char *name, mode_t mode,
+                        inum &ino_out) {
   int r = OK;
 
   /*
@@ -132,7 +129,8 @@ int chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_ou
   return r;
 }
 
-int chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out) {
+int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
+                       inum &ino_out) {
   int r = OK;
 
   /*
@@ -144,7 +142,8 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out
   return r;
 }
 
-int chfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out) {
+int chfs_client::lookup(inum parent, const char *name, bool &found,
+                        inum &ino_out) {
   int r = OK;
 
   /*

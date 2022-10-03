@@ -39,8 +39,7 @@
 #define LARGE_FILE_SIZE_MIN (512 * 10)
 #define LARGE_FILE_SIZE_MAX (512 * 200)
 
-#define iprint(msg) \
-  printf("[TEST_ERROR]: %s\n", msg);
+#define iprint(msg) printf("[TEST_ERROR]: %s\n", msg);
 extent_client *ec;
 int total_score = 0;
 
@@ -97,10 +96,11 @@ int test_indirect() {
   extent_protocol::extentid_t id_list[FILE_NUM];
   std::string content[FILE_NUM];
   printf("begin test indirect\n");
-  srand((unsigned) time(NULL));
+  srand((unsigned) time(nullptr));
 
   for (i = 0; i < FILE_NUM; i++) {
-    if (ec->create(extent_protocol::T_FILE, id_list[i]) != extent_protocol::OK) {
+    if (ec->create(extent_protocol::T_FILE, id_list[i]) !=
+        extent_protocol::OK) {
       printf("error create, return not OK\n");
       return 1;
     }
@@ -109,26 +109,31 @@ int test_indirect() {
   for (j = 0; j < 10; j++) {
     for (i = 0; i < FILE_NUM; i++) {
       memset(temp, 0, LARGE_FILE_SIZE_MAX);
-      size = (rand() % (LARGE_FILE_SIZE_MAX - LARGE_FILE_SIZE_MIN)) + LARGE_FILE_SIZE_MIN;
+      size = (rand() % (LARGE_FILE_SIZE_MAX - LARGE_FILE_SIZE_MIN)) +
+             LARGE_FILE_SIZE_MIN;
       for (k = 0; k < size; k++) {
         rnum = rand() % 26;
         temp[k] = 97 + rnum;
       }
       content[i] = std::string(temp);
-      if (ec->put(id_list[i], content[i]) != extent_protocol::OK) {
+      if (ec->put(id_list[i], {content[i].begin(), content[i].end()}) !=
+          extent_protocol::OK) {
         printf("error put, return not OK\n");
         return 1;
       }
     }
 
     for (i = 0; i < FILE_NUM; i++) {
-      std::string buf;
-      if (ec->get(id_list[i], buf) != extent_protocol::OK) {
+      auto bbuf = std::vector<uint8_t>();
+      if (ec->get(id_list[i], bbuf) != extent_protocol::OK) {
         printf("error get, return not OK\n");
         return 2;
       }
-      if (buf.compare(content[i]) != 0) {
-        std::cout << "error get large file, not consistent with put large file : " << buf << " <-> " << content[i] << "\n";
+      std::string buf;
+      if (buf != content[i]) {
+        std::cout
+            << "error get large file, not consistent with put large file : "
+            << buf << " <-> " << content[i] << "\n";
         return 3;
       }
     }
@@ -157,7 +162,7 @@ int test_put_and_get() {
   srand((unsigned) time(NULL));
   for (i = 0; i < FILE_NUM; i++) {
     memset(&a, 0, sizeof(a));
-    id = (extent_protocol::extentid_t)(i + 2);
+    id = (extent_protocol::extentid_t)(i);
     if (ec->getattr(id, a) != extent_protocol::OK) {
       iprint("error getting attr, return not OK\n");
       return 1;
@@ -167,7 +172,8 @@ int test_put_and_get() {
       memset(temp, 0, 10);
       sprintf(temp, "%d", rnum);
       std::string buf(temp);
-      if (ec->put(id, buf) != extent_protocol::OK) {
+      auto bbuf = std::vector<uint8_t>(buf.begin(), buf.end());
+      if (ec->put(id, bbuf) != extent_protocol::OK) {
         iprint("error put, return not OK\n");
         return 2;
       }
@@ -182,16 +188,19 @@ int test_put_and_get() {
       return 3;
     }
     if (a.type == extent_protocol::T_FILE) {
-      std::string buf;
-      if (ec->get(id, buf) != extent_protocol::OK) {
+
+      auto bbuf = std::vector<uint8_t>();
+      if (ec->get(id, bbuf) != extent_protocol::OK) {
         iprint("error get, return not OK\n");
         return 4;
       }
+      auto buf = std::string(bbuf.begin(), bbuf.end());
       memset(temp, 0, 10);
       sprintf(temp, "%d", contents[i]);
       std::string buf2(temp);
-      if (buf.compare(buf2) != 0) {
-        std::cout << "[TEST_ERROR] : error get, not consistent with put " << buf << " <-> " << buf2 << "\n\n";
+      if (buf != buf2) {
+        std::cout << "[TEST_ERROR] : error get, not consistent with put " << buf
+                  << " <-> " << buf2 << "\n\n";
         return 5;
       }
     }
@@ -234,14 +243,10 @@ int main(int argc, char *argv[]) {
 
   ec = new extent_client();
 
-  if (test_create_and_getattr() != 0)
-    goto test_finish;
-  if (test_put_and_get() != 0)
-    goto test_finish;
-  if (test_remove() != 0)
-    goto test_finish;
-  if (test_indirect() != 0)
-    goto test_finish;
+  if (test_create_and_getattr() != 0) goto test_finish;
+  if (test_put_and_get() != 0) goto test_finish;
+  if (test_remove() != 0) goto test_finish;
+  if (test_indirect() != 0) goto test_finish;
 
 test_finish:
   printf("---------------------------------\n");

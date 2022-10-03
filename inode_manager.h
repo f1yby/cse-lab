@@ -6,7 +6,7 @@
 #include "extent_protocol.h"
 #include <stdint.h>
 
-#define DISK_SIZE 1024 * 1024 * 16
+#define DISK_SIZE (1024 * 1024 * 16)
 #define BLOCK_SIZE 512
 #define BLOCK_NUM (DISK_SIZE / BLOCK_SIZE)
 
@@ -42,6 +42,7 @@ public:
   struct superblock sb;
 
   uint32_t alloc_block();
+  uint32_t alloc_block_back();
   void free_block(uint32_t id);
   void read_block(uint32_t id, uint8_t *buf);
   void write_block(uint32_t id, const uint8_t *buf);
@@ -56,7 +57,7 @@ public:
 //(BLOCK_SIZE / sizeof(struct inode))
 
 // Block containing inode i
-#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i) / IPB + 3)
+#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i) / IPB + 2)
 
 // Bitmap bits per block
 #define BPB (BLOCK_SIZE * 8)
@@ -64,16 +65,21 @@ public:
 // Block containing bit for block b
 #define BBLOCK(b) ((b) / BPB + 2)
 
-#define NDIRECT 100
-#define NINDIRECT (BLOCK_SIZE / sizeof(uint))
+#define NDIRECT                                                                \
+  ((BLOCK_SIZE - sizeof(inode::type) - sizeof(inode::size) -                   \
+    sizeof(inode::atime) - sizeof(inode::mtime) - sizeof(inode::ctime)) /      \
+       sizeof(blockid_t) -                                                     \
+   1)
+#define NINDIRECT (BLOCK_SIZE / sizeof(uint32_t))
 #define MAXFILE (NDIRECT + NINDIRECT)
 
 typedef struct inode {
-  short type;
+  unsigned int type;
   unsigned int size;
   unsigned int atime;
   unsigned int mtime;
   unsigned int ctime;
+
   blockid_t blocks[NDIRECT + 1];// Data block addresses
 } inode_t;
 
@@ -81,8 +87,6 @@ class inode_manager {
 private:
   block_manager *bm;
   struct inode *get_inode(uint32_t inum);
-  void put_inode(uint32_t inum, struct inode *ino);
-
 public:
   inode_manager();
   uint32_t alloc_inode(uint32_t type);
