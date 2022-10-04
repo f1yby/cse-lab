@@ -300,7 +300,7 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
   //  }
   //====
   while (wsize < size && blocks.size() < NDIRECT - 1) {
-    auto i = bm->alloc_block();
+    auto i = bm->alloc_block_back();
     bm->write_block(i, buf + wsize, size - wsize);
     wsize += BLOCK_SIZE;
     blocks.push_back(i);
@@ -308,13 +308,13 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
 
   auto nb = std::vector<uint32_t>();
   while (wsize < size) {
-    auto i = bm->alloc_block();
+    auto i = bm->alloc_block_back();
     bm->write_block(i, buf + wsize, size - wsize);
     wsize += BLOCK_SIZE;
     nb.push_back(i);
   }
   if (!nb.empty()) {
-    auto i = bm->alloc_block();
+    auto i = bm->alloc_block_back();
     bm->write_block(i, reinterpret_cast<const uint8_t *>(&nb[0]),
                     sizeof(uint32_t) * nb.size());
     blocks.push_back(i);
