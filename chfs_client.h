@@ -12,11 +12,13 @@ class chfs_client {
 
 public:
   typedef unsigned long long inum;
-  enum xxstatus { OK,
-                  RPCERR,
-                  NOENT,
-                  IOERR,
-                  EXIST };
+  enum xxstatus {
+    OK,
+    RPCERR,
+    NOENT, // No such file or directory
+    IOERR,
+    EXIST
+  };
   typedef int status;
 
   struct fileinfo {

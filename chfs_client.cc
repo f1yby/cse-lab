@@ -120,12 +120,29 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
                         inum &ino_out) {
   int r = OK;
 
-  /*
-     * your code goes here.
-     * note: lookup is what you need to check if file exist;
-     * after create file or dir, you must remember to modify the parent infomation.
-     */
+  ino_out = 0;
+  bool exist = false;
 
+  lookup(parent, name, exist, ino_out);
+  if (exist) {
+    r = EXIST;
+    return r;
+  }
+
+  ec->create(extent_protocol::T_FILE, ino_out);
+  if (ino_out == 0) {
+    r = IOERR;
+    return r;
+  }
+
+  auto buf = std::vector<uint8_t>();
+  ec->get(parent, buf);
+  std::string n(name);
+  buf.push_back(n.size());
+  buf.resize(buf.size() + 4, 0);
+  *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
+  buf.insert(buf.end(), n.begin(), n.end());
+  ec->put(parent, buf);
   return r;
 }
 
@@ -133,36 +150,76 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
                        inum &ino_out) {
   int r = OK;
 
-  /*
-     * your code goes here.
-     * note: lookup is what you need to check if directory exist;
-     * after create file or dir, you must remember to modify the parent infomation.
-     */
+  ino_out = 0;
+  bool exist = false;
 
+  lookup(parent, name, exist, ino_out);
+  if (exist) {
+    r = EXIST;
+    return r;
+  }
+
+  ec->create(extent_protocol::T_DIR, ino_out);
+  if (ino_out == 0) {
+    r = IOERR;
+    return r;
+  }
+
+  auto buf = std::vector<uint8_t>();
+  ec->get(parent, buf);
+  std::string n(name);
+  buf.push_back(n.size());
+  buf.resize(buf.size() + 4, 0);
+  *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
+  buf.insert(buf.end(), n.begin(), n.end());
+  ec->put(parent, buf);
   return r;
 }
 
 int chfs_client::lookup(inum parent, const char *name, bool &found,
                         inum &ino_out) {
   int r = OK;
+  auto buf = std::vector<uint8_t>();
+  ec->get(parent, buf);
+  std::cout << "chfs_client: lookup " << name << " in " << parent
+            << ": buffer_size: " << buf.size() << std::endl;
+  auto l = strlen(name);
+  ino_out = 0;
+  for (int i = 0, len = 0; i < buf.size(); i += len) {
+    len = buf[i];
+    i += 5;
+    std::cout << len << " "
+              << std::string(buf.begin() + i, buf.begin() + i + len)
+              << std::endl;
+    if (l != len) { continue; }
 
-  /*
-     * your code goes here.
-     * note: lookup file from parent dir according to name;
-     * you should design the format of directory content.
-     */
-
+    if (memcmp(&buf[i], name, len) == 0) {
+      ino_out = *(reinterpret_cast<uint32_t *>(&buf[i - 4]));
+      found = true;
+      return r;
+    }
+  }
+  r = NOENT;
   return r;
 }
 
 int chfs_client::readdir(inum dir, std::list<dirent> &list) {
   int r = OK;
+  auto buf = std::vector<uint8_t>();
+  auto s = ec->get(dir, buf);
+  std::cout << "chfs_client: readdir " << dir << ": buffer_size: " << buf.size()
+            << std::endl;
+  for (int i = 0, len = 0; i < buf.size(); i += len) {
+    len = buf[i];
+    i += 1;
+    auto ino = *(reinterpret_cast<uint32_t *>(&buf[i]));
+    i += 4;
+    std::cout << len << ' '
+              << std::string(buf.begin() + i, buf.begin() + i + len)
+              << std::endl;
+    list.push_back({{buf.begin() + i, buf.begin() + i + len}, ino});
+  }
 
-  /*
-     * your code goes here.
-     * note: you should parse the dirctory content using your defined format,
-     * and push the dirents to the list.
-     */
 
   return r;
 }
