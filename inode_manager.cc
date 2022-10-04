@@ -77,7 +77,7 @@ void block_manager::free_block(uint32_t id) {
   auto buf = static_cast<uint8_t *>(malloc(BLOCK_SIZE));
   auto bb = BBLOCK(id);
   read_block(bb, buf);
-  buf[id % BLOCK_SIZE] &= (1 << (id & 0x7)) ^ (0xff);
+  buf[id % BPB / 8] -= (1 << (id & 0x7));
   write_block(bb, buf);
   free(buf);
 }
@@ -109,7 +109,7 @@ void block_manager::read_block(uint32_t id, uint8_t *buf) {
   d->read_block(id, buf);
 }
 void block_manager::read_block(uint32_t id, uint8_t *buf, uint32_t n) {
-  if (n == BLOCK_SIZE) {
+  if (n >= BLOCK_SIZE) {
     d->read_block(id, buf);
   } else {
     uint8_t b[BLOCK_SIZE] = {0};
@@ -123,7 +123,7 @@ void block_manager::write_block(uint32_t id, const uint8_t *buf) {
 }
 
 void block_manager::write_block(uint32_t id, const uint8_t *buf, uint32_t n) {
-  if (n == BLOCK_SIZE) {
+  if (n >= BLOCK_SIZE) {
     d->write_block(id, buf);
   } else {
     uint8_t b[BLOCK_SIZE] = {0};
@@ -187,28 +187,41 @@ void inode_manager::read_file(uint32_t inum, uint8_t **buf_out,
   auto *inode = get_inode(inum);
   if (inode == nullptr) { return; }
   std::list<uint32_t> queue;
-  for (auto i = 0; inode->blocks[i] != 0; ++i) {
+  for (auto i = 0; i < NDIRECT && inode->blocks[i] != 0; ++i) {
     queue.push_back(inode->blocks[i]);
   }
-  auto fsize = inode->size;
-  auto blocks = (fsize + BLOCK_SIZE - 1) / BLOCK_SIZE;
   auto *buf = static_cast<uint8_t *>(malloc(BLOCK_SIZE));
-  while (queue.size() != blocks) {
-    bm->read_block(queue.front(), buf);
-    for (int i = 0; buf[i] != 0 && i < NINDIRECT; ++i) {
+
+  //==>>
+  //  auto fsize = inode->size;
+  //  auto blocks = (fsize + BLOCK_SIZE - 1) / BLOCK_SIZE;
+  //  while (queue.size() != blocks) {
+  //    bm->read_block(queue.front(), buf);
+  //    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] != 0;
+  //         ++i) {
+  //      queue.push_back(reinterpret_cast<uint32_t *>(buf)[i]);
+  //    }
+  //    queue.pop_front();
+  //  }
+  //==
+  if (queue.size() == NDIRECT) {
+    bm->read_block(queue.back(), buf);
+    std::cout << "Read" << queue.back() << std::endl;
+    queue.pop_back();
+    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] != 0;
+         ++i) {
       queue.push_back(reinterpret_cast<uint32_t *>(buf)[i]);
     }
-    queue.pop_front();
   }
+  //==<<
+
   *size = inode->size;
   *buf_out = static_cast<uint8_t *>(malloc(inode->size));
-  auto buf_cursor = *buf_out;
+  auto rsize = 0;
   for (const auto &i: queue) {
-    bm->read_block(i, buf_cursor,
-                   *size - (buf_cursor - *buf_out) < BLOCK_SIZE
-                       ? *size - (buf_cursor - *buf_out)
-                       : BLOCK_SIZE);
-    buf_cursor += BLOCK_SIZE;
+    auto s = *size > rsize ? *size - rsize : 0;
+    bm->read_block(i, *buf_out + rsize, s);
+    rsize += BLOCK_SIZE;
   }
   inode->atime = time(nullptr);
   bm->write_block(IBLOCK(inum, BLOCK_NUM), reinterpret_cast<uint8_t *>(inode));
@@ -235,41 +248,79 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
     blocks.push_back(inode->blocks[i]);
   }
   auto *b = static_cast<uint8_t *>(malloc(BLOCK_SIZE));
-  while (blocks.size() < old_blocks) {
-    bm->read_block(blocks.front(), b);
-    for (int i = 0; reinterpret_cast<uint32_t *>(b)[i] != 0 && i < NINDIRECT;
+  //==>>
+  //  while (blocks.size() != old_blocks) {
+  //    bm->read_block(blocks.front(), b);
+  //    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(b)[i] != 0;
+  //         ++i) {
+  //      blocks.push_back(reinterpret_cast<uint32_t *>(b)[i]);
+  //    }
+  //    bm->free_block(blocks.front());
+  //    blocks.pop_front();
+  //  }
+  //====
+  if (blocks.size() == NDIRECT) {
+    bm->read_block(blocks.back(), b);
+    bm->free_block(blocks.back());
+    auto c = blocks.back();
+    blocks.pop_back();
+    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(b)[i] != 0;
          ++i) {
-      blocks.push_back(reinterpret_cast<uint32_t *>(b)[i]);
+      if (reinterpret_cast<uint32_t *>(b)[i] < BLOCK_NUM) {
+        blocks.push_back(reinterpret_cast<uint32_t *>(b)[i]);
+      }
     }
-    bm->free_block(blocks.front());
-    blocks.pop_front();
   }
+  //==<<
   for (auto i: blocks) { bm->free_block(i); }
+  blocks.clear();
   uint32_t wsize = 0;
-  while (wsize < size) {
-    auto i = bm->alloc_block_back();
-    bm->write_block(i, buf + wsize,
-                    size - wsize < BLOCK_SIZE ? size - wsize : BLOCK_SIZE);
+
+
+  //==>>
+  //  while (wsize < size && blocks.size()) {
+  //    auto i = bm->alloc_block_back();
+  //    bm->write_block(i, buf + wsize,
+  //                    size - wsize < BLOCK_SIZE ? size - wsize : BLOCK_SIZE);
+  //    wsize += BLOCK_SIZE;
+  //    blocks.push_back(i);
+  //  }
+  //  while (blocks.size() > NDIRECT) {
+  //    std::deque<uint32_t> nblocks;
+  //    while (blocks.size() >= NINDIRECT) {
+  //      auto i = bm->alloc_block_back();
+  //      bm->write_block(i, reinterpret_cast<const uint8_t *>(&blocks[0]));
+  //      nblocks.push_back(i);
+  //      blocks.erase(blocks.begin(), blocks.begin() + NINDIRECT);
+  //    }
+  //    auto i = bm->alloc_block_back();
+  //    bm->write_block(i, reinterpret_cast<uint8_t *>(&blocks[0]),
+  //                    sizeof(uint32_t) * blocks.size());
+  //    nblocks.push_back(i);
+  //    blocks = std::move(nblocks);
+  //  }
+  //====
+  while (wsize < size && blocks.size() < NDIRECT - 1) {
+    auto i = bm->alloc_block();
+    bm->write_block(i, buf + wsize, size - wsize);
     wsize += BLOCK_SIZE;
     blocks.push_back(i);
   }
-  while (blocks.size() > NDIRECT) {
-    std::deque<uint32_t> nblocks;
-    while (blocks.size() >= NINDIRECT) {
-      auto i = bm->alloc_block_back();
-      bm->write_block(i, reinterpret_cast<const uint8_t *>(&blocks[0]));
-      nblocks.push_back(i);
-      blocks.erase(blocks.begin(), blocks.begin() + NINDIRECT);
-    }
-    bzero(b, BLOCK_SIZE);
-    for (int i = 0; i < blocks.size(); ++i) {
-      reinterpret_cast<uint32_t *>(b)[i] = blocks[i];
-    }
-    auto i = bm->alloc_block_back();
-    bm->write_block(i, b);
-    nblocks.push_back(i);
-    blocks = std::move(nblocks);
+
+  auto nb = std::vector<uint32_t>();
+  while (wsize < size) {
+    auto i = bm->alloc_block();
+    bm->write_block(i, buf + wsize, size - wsize);
+    wsize += BLOCK_SIZE;
+    nb.push_back(i);
   }
+  if (!nb.empty()) {
+    auto i = bm->alloc_block();
+    bm->write_block(i, reinterpret_cast<const uint8_t *>(&nb[0]),
+                    sizeof(uint32_t) * nb.size());
+    blocks.push_back(i);
+  }
+  //==<<
   bzero(inode->blocks, NDIRECT * sizeof(blockid_t));
   for (int i = 0; i < blocks.size(); ++i) { inode->blocks[i] = blocks[i]; }
   inode->size = size;

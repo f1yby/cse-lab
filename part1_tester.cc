@@ -36,8 +36,8 @@
 #include <cstdio>
 
 #define FILE_NUM 50
-#define LARGE_FILE_SIZE_MIN (512 * 10)
-#define LARGE_FILE_SIZE_MAX (512 * 200)
+#define LARGE_FILE_SIZE_MIN (512 * 1)
+#define LARGE_FILE_SIZE_MAX (512 * 2)
 
 #define iprint(msg) printf("[TEST_ERROR]: %s\n", msg);
 extent_client *ec;
@@ -112,7 +112,7 @@ int test_indirect() {
       size = (rand() % (LARGE_FILE_SIZE_MAX - LARGE_FILE_SIZE_MIN)) +
              LARGE_FILE_SIZE_MIN;
       for (k = 0; k < size; k++) {
-        rnum = rand() % 26;
+        rnum = rand() % 1;
         temp[k] = 97 + rnum;
       }
       content[i] = std::string(temp);
@@ -129,7 +129,7 @@ int test_indirect() {
         printf("error get, return not OK\n");
         return 2;
       }
-      std::string buf;
+      std::string buf(bbuf.begin(), bbuf.end());
       if (buf != content[i]) {
         std::cout
             << "error get large file, not consistent with put large file : "
@@ -219,7 +219,7 @@ int test_remove() {
   printf("========== begin test remove ==========\n");
   for (i = 0; i < FILE_NUM; i++) {
     memset(&a, 0, sizeof(a));
-    id = (extent_protocol::extentid_t)(i );
+    id = (extent_protocol::extentid_t)(i);
     if (ec->remove(id) != extent_protocol::OK) {
       iprint("error removing, return not OK\n");
       return 1;
