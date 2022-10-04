@@ -58,7 +58,7 @@ public:
 //(BLOCK_SIZE / sizeof(struct inode))
 
 // Block containing inode i
-#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i) / IPB + 2)
+#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i-1) / IPB + 2)
 
 // Bitmap bits per block
 #define BPB (BLOCK_SIZE * 8)

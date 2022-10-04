@@ -112,7 +112,7 @@ int test_indirect() {
       size = (rand() % (LARGE_FILE_SIZE_MAX - LARGE_FILE_SIZE_MIN)) +
              LARGE_FILE_SIZE_MIN;
       for (k = 0; k < size; k++) {
-        rnum = rand() % 1;
+        rnum = rand() % 26;
         temp[k] = 97 + rnum;
       }
       content[i] = std::string(temp);
@@ -162,7 +162,7 @@ int test_put_and_get() {
   srand((unsigned) time(NULL));
   for (i = 0; i < FILE_NUM; i++) {
     memset(&a, 0, sizeof(a));
-    id = (extent_protocol::extentid_t)(i);
+    id = (extent_protocol::extentid_t)(i + 2);
     if (ec->getattr(id, a) != extent_protocol::OK) {
       iprint("error getting attr, return not OK\n");
       return 1;
@@ -182,7 +182,7 @@ int test_put_and_get() {
   }
   for (i = 0; i < FILE_NUM; i++) {
     memset(&a, 0, sizeof(a));
-    id = (extent_protocol::extentid_t)(i);
+    id = (extent_protocol::extentid_t)(i + 2);
     if (ec->getattr(id, a) != extent_protocol::OK) {
       iprint("error getting attr, return not OK\n");
       return 3;
@@ -219,7 +219,7 @@ int test_remove() {
   printf("========== begin test remove ==========\n");
   for (i = 0; i < FILE_NUM; i++) {
     memset(&a, 0, sizeof(a));
-    id = (extent_protocol::extentid_t)(i);
+    id = (extent_protocol::extentid_t)(i + 2);
     if (ec->remove(id) != extent_protocol::OK) {
       iprint("error removing, return not OK\n");
       return 1;

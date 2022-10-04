@@ -137,8 +137,8 @@ void block_manager::write_block(uint32_t id, const uint8_t *buf, uint32_t n) {
 inode_manager::inode_manager() {
   bm = new block_manager();
   uint32_t root_dir = alloc_inode(extent_protocol::T_DIR);
-  if (root_dir != 0) {
-    printf("\tim: error! alloc first inode %d, should be 0\n", root_dir);
+  if (root_dir != 1) {
+    printf("\tim: error! alloc first inode %d, should be 1\n", root_dir);
     exit(0);
   }
 }
@@ -154,7 +154,7 @@ uint32_t inode_manager::alloc_inode(uint32_t type) {
   i->ctime = time(nullptr);
   bm->write_block(id, buf);
   free(buf);
-  return id - 2 - bm->sb.nblocks / BPB;
+  return id - 1 - bm->sb.nblocks / BPB;
 }
 
 void inode_manager::free_inode(uint32_t inum) {
