@@ -36,8 +36,8 @@
 #include <cstdio>
 
 #define FILE_NUM 50
-#define LARGE_FILE_SIZE_MIN (512 * 1)
-#define LARGE_FILE_SIZE_MAX (512 * 2)
+#define LARGE_FILE_SIZE_MIN (512 * 10)
+#define LARGE_FILE_SIZE_MAX (512 * 200)
 
 #define iprint(msg) printf("[TEST_ERROR]: %s\n", msg);
 extent_client *ec;
