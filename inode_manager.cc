@@ -151,7 +151,10 @@ uint32_t inode_manager::alloc_inode(uint32_t type) {
   bm->read_block(id, buf);
   auto *i = reinterpret_cast<inode *>(buf);
   i->type = type;
+  i->size = 0;
   i->ctime = time(nullptr);
+  i->mtime = time(nullptr);
+  i->atime = time(nullptr);
   bm->write_block(id, buf);
   free(buf);
   return id - 1 - bm->sb.nblocks / BPB;
@@ -171,7 +174,10 @@ struct inode *inode_manager::get_inode(uint32_t inum) {
   bm->read_block(BBLOCK(bid), buf);
   if (buf[(bid % BPB) / 8] & (1 << (bid & 0x7))) {
     bm->read_block(bid, buf);
-    return reinterpret_cast<inode *>(buf);
+    auto i = reinterpret_cast<inode *>(buf);
+    i->atime = time(nullptr);
+    bm->write_block(bid, buf);
+    return i;
   } else {
     free(buf);
     return nullptr;
@@ -323,6 +329,7 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
   bzero(inode->blocks, NDIRECT * sizeof(blockid_t));
   for (int i = 0; i < blocks.size(); ++i) { inode->blocks[i] = blocks[i]; }
   inode->size = size;
+  inode->ctime = time(nullptr);
   inode->mtime = time(nullptr);
   bm->write_block(IBLOCK(inum, BLOCK_NUM),
                   reinterpret_cast<const uint8_t *>(inode));

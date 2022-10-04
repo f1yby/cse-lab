@@ -53,7 +53,7 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_ctime = info.ctime;
     st.st_size = info.size;
     printf("   getattr -> %llu\n", info.size);
-  } else {
+  } else if(chfs->isdir(inum)){
     chfs_client::dirinfo info;
     ret = chfs->getdir(inum, info);
     if (ret != chfs_client::OK) { return ret; }
@@ -63,6 +63,18 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_mtime = info.mtime;
     st.st_ctime = info.ctime;
     printf("   getattr -> %lu %lu %lu\n", info.atime, info.mtime, info.ctime);
+  } else {
+    chfs_client::fileinfo info;
+    ret = chfs->getfile(inum, info);
+    if (ret != chfs_client::OK) { return ret; }
+    st.st_mode = S_IFLNK | 0777;
+    st.st_nlink = 1;
+    st.st_atime = info.atime;
+    st.st_mtime = info.mtime;
+    st.st_ctime = info.ctime;
+    st.st_size = info.size;
+    printf("   getattr -> %lu %lu %lu\n", info.atime, info.mtime, info.ctime);
+
   }
   return chfs_client::OK;
 }
@@ -364,19 +376,24 @@ void fuseserver_open(fuse_req_t req, fuse_ino_t ino,
 //
 void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
                       mode_t mode) {
+
   struct fuse_entry_param e;
   // In chfs, timeouts are always set to 0.0, and generations are always set to 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
-  // Suppress compiler warning of unused e.
-  (void) e;
-
-#if 0
-    // Change the above line to "#if 1", and your code goes here
-#else
-  fuse_reply_err(req, ENOSYS);
-#endif
+  chfs_client::inum inum;
+  auto ret = chfs->mkdir(parent, name, mode, inum);
+  std::cout << "fuseserver_mkdir " << name << " of " << inum << " in " << parent
+            << std::endl;
+  if (ret == chfs_client::OK) {
+    e.ino = inum;
+    getattr(inum, e.attr);
+    std::cout << "OK mkdir " << name << std::endl;
+    fuse_reply_entry(req, &e);
+  } else {
+    fuse_reply_err(req, EEXIST);
+  }
 }
 
 //
@@ -398,6 +415,38 @@ void fuseserver_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     }
   }
 }
+
+void fuseserver_readlink(fuse_req_t req, fuse_ino_t ino) {
+  auto buf = std::string();
+  if (chfs->readlink(ino, buf) != chfs_client::OK) {
+    fuse_reply_err(req, EIO);
+    return;
+  } else {
+    fuse_reply_readlink(req, &buf[0]);
+  }
+}
+
+void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
+                        const char *name) {
+  struct fuse_entry_param e;
+  // In chfs, timeouts are always set to 0.0, and generations are always set to 0
+  e.attr_timeout = 0.0;
+  e.entry_timeout = 0.0;
+  e.generation = 0;
+  chfs_client::inum inum;
+  auto ret = chfs->symlink(parent,link,  name, inum);
+  std::cout << "fuseserver_symlink " << name << " of " << inum << " in " << parent
+            << std::endl;
+  if (ret == chfs_client::OK) {
+    e.ino = inum;
+    getattr(inum, e.attr);
+    std::cout << "OK mkdir " << name << std::endl;
+    fuse_reply_entry(req, &e);
+  } else {
+    fuse_reply_err(req, EEXIST);
+  }
+}
+
 
 void fuseserver_statfs(fuse_req_t req) {
   struct statvfs buf;
@@ -452,6 +501,8 @@ int main(int argc, char *argv[]) {
   fuseserver_oper.setattr = fuseserver_setattr;
   fuseserver_oper.unlink = fuseserver_unlink;
   fuseserver_oper.mkdir = fuseserver_mkdir;
+  fuseserver_oper.readlink = fuseserver_readlink;
+  fuseserver_oper.symlink = fuseserver_symlink;
   /** Your code here for Lab.
      * you may want to add
      * routines here to implement symbolic link,

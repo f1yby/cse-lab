@@ -52,8 +52,33 @@ bool chfs_client::isfile(inum inum) {
  * */
 
 bool chfs_client::isdir(inum inum) {
-  // Oops! is this still correct when you implement symlink?
-  return !isfile(inum);
+  extent_protocol::attr a;
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    printf("error getting attr\n");
+    return false;
+  }
+
+  if (a.type == extent_protocol::T_DIR) {
+    printf("isfile: %lld is a file\n", inum);
+    return true;
+  }
+  printf("isfile: %lld is a dir\n", inum);
+  return false;
+}
+
+bool chfs_client::issymlink(inum inum) {
+  extent_protocol::attr a;
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    printf("error getting attr\n");
+    return false;
+  }
+
+  if (a.type == extent_protocol::T_LINK) {
+    printf("isfile: %lld is a file\n", inum);
+    return true;
+  }
+  printf("isfile: %lld is a dir\n", inum);
+  return false;
 }
 
 int chfs_client::getfile(inum inum, fileinfo &fin) {
@@ -172,6 +197,7 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
   auto buf = std::vector<uint8_t>();
   ec->get(parent, buf);
+  std::cout << std::string(buf.begin(), buf.end());
   std::string n(name);
   buf.push_back(n.size());
   buf.resize(buf.size() + 4, 0);
@@ -211,7 +237,7 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
 int chfs_client::readdir(inum dir, std::list<dirent> &list) {
   int r = OK;
   auto buf = std::vector<uint8_t>();
-  auto s = ec->get(dir, buf);
+  ec->get(dir, buf);
   std::cout << "chfs_client: readdir " << dir << ": buffer_size: " << buf.size()
             << std::endl;
   for (int i = 0, len = 0; i < buf.size(); i += len) {
@@ -265,13 +291,74 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
 }
 
 int chfs_client::unlink(inum parent, const char *name) {
+
+  int r = OK;
+  auto buf = std::vector<uint8_t>();
+  ec->get(parent, buf);
+  std::cout << "chfs_client: unlink " << name << " in " << parent
+            << ": buffer_size: " << buf.size() << std::endl;
+  auto l = strlen(name);
+  for (int i = 0, len = 0; i < buf.size(); i += len) {
+    len = buf[i];
+    i += 5;
+    std::cout << len << " "
+              << std::string(buf.begin() + i, buf.begin() + i + len)
+              << std::endl;
+    if (l != len) { continue; }
+
+    if (memcmp(&buf[i], name, len) == 0) {
+      buf.erase(buf.begin() + i - 5, buf.begin() + i + len);
+      std::cout << "chfs_client: erased buf "
+                << std::string(buf.begin(), buf.end()) << std::endl;
+      ec->put(parent, buf);
+      return r;
+    }
+  }
+  r = NOENT;
+  return r;
+}
+int chfs_client::symlink(chfs_client::inum parent, const char *link,
+                         const char *name, chfs_client::inum &ino_out) {
+
   int r = OK;
 
-  /*
-     * your code goes here.
-     * note: you should remove the file using ec->remove,
-     * and update the parent directory content.
-     */
+  ino_out = 0;
+  bool exist = false;
 
+  lookup(parent, name, exist, ino_out);
+  if (exist) {
+    r = EXIST;
+    return r;
+  }
+
+  ec->create(extent_protocol::T_LINK, ino_out);
+  if (ino_out == 0) {
+    r = IOERR;
+    return r;
+  }
+  std::string l(link);
+  ec->put(ino_out, {l.begin(), l.end()});
+
+  auto buf = std::vector<uint8_t>();
+  ec->get(parent, buf);
+  std::cout << std::string(buf.begin(), buf.end());
+  std::string n(name);
+  buf.push_back(n.size());
+  buf.resize(buf.size() + 4, 0);
+  *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
+  buf.insert(buf.end(), n.begin(), n.end());
+  ec->put(parent, buf);
+  return r;
+}
+int chfs_client::readlink(chfs_client::inum ino, std::string &data) {
+  int r = OK;
+  auto buf = std::vector<uint8_t>();
+
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
+  data = std::string(buf.begin(), buf.end());
+  data.push_back(0);
   return r;
 }
