@@ -206,7 +206,6 @@ void inode_manager::read_file(uint32_t inum, uint8_t **buf_out,
   //==
   if (queue.size() == NDIRECT) {
     bm->read_block(queue.back(), buf);
-    std::cout << "Read" << queue.back() << std::endl;
     queue.pop_back();
     for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] != 0;
          ++i) {
