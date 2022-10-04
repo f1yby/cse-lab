@@ -106,13 +106,18 @@ release:
 // Only support set size of attr
 int chfs_client::setattr(inum ino, size_t size) {
   int r = OK;
+  auto buf = std::vector<uint8_t>();
 
-  /*
-     * your code goes here.
-     * note: get the content of inode ino, and modify its content
-     * according to the size (<, =, or >) content length.
-     */
-
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
+  buf.resize(size, 0);
+  if (ec->put(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
+  std::cout << "extent_server: setattr new size " << buf.size() << std::endl;
   return r;
 }
 
@@ -226,25 +231,36 @@ int chfs_client::readdir(inum dir, std::list<dirent> &list) {
 
 int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
   int r = OK;
+  auto buf = std::vector<uint8_t>();
 
-  /*
-     * your code goes here.
-     * note: read using ec->get().
-     */
-
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
+  data = std::string(buf.begin() + off, buf.begin() + size + off);
   return r;
 }
 
 int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
                        size_t &bytes_written) {
   int r = OK;
+  auto buf = std::vector<uint8_t>();
+  bytes_written = 0;
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
+  if (off + size > buf.size()) {
+    bytes_written += off - buf.size();
+    buf.resize(off + size, 0);
+  }
 
-  /*
-     * your code goes here.
-     * note: write using ec->put().
-     * when off > length of original file, fill the holes with '\0'.
-     */
-
+  for (int i = 0; i < size; ++i) { buf[off + i] = data[i]; }
+  bytes_written += size;
+  if (ec->put(ino, buf) != extent_protocol::OK) {
+    r = IOERR;
+    return r;
+  }
   return r;
 }
 
