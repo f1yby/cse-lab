@@ -243,20 +243,20 @@ int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
 
 int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
                        size_t &bytes_written) {
+  std::cout << "chfs_clent:: write" << std::endl;
   int r = OK;
   auto buf = std::vector<uint8_t>();
-  bytes_written = 0;
   if (ec->get(ino, buf) != extent_protocol::OK) {
     r = IOERR;
     return r;
   }
-  if (off + size > buf.size()) {
-    bytes_written += off - buf.size();
-    buf.resize(off + size, 0);
+  if (off + size > buf.size()) { buf.resize(off + size, 0); }
+  bytes_written = size;
+  for (int i = 0; i < size; ++i) {
+    buf[off + i] = data[i];
+    std::cout << buf[off + i];
   }
 
-  for (int i = 0; i < size; ++i) { buf[off + i] = data[i]; }
-  bytes_written += size;
   if (ec->put(ino, buf) != extent_protocol::OK) {
     r = IOERR;
     return r;

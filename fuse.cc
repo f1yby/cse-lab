@@ -140,18 +140,18 @@ void fuseserver_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                      struct fuse_file_info *fi) {
 #if 1
-  printf("   fuseserver_read %d\n", ino);
+  printf("   fuseserver_read %lu bytes to %ld at %lu\n", size, ino, off);
+
   auto buf = std::string();
   if (chfs->read(ino, size, off, buf) != chfs_client::OK) {
     fuse_reply_err(req, EIO);
     return;
 
   } else {
-    auto ar = buf.size() >= off + size ? size : buf.size() - off;
+    auto ar = buf.size();
     auto b = static_cast<char *>(malloc(ar));
-    memcpy(b, &buf[off], ar);
-    fuse_reply_buf(req, b, ar);
-    printf("OK: read returns.\n");
+    fuse_reply_buf(req, &buf[0], ar);
+    printf("OK: read returns. %lu bytes read\n", ar);
   }
 #else
   fuse_reply_err(req, ENOSYS);
@@ -175,7 +175,7 @@ void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 //
 void fuseserver_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
                       size_t size, off_t off, struct fuse_file_info *fi) {
-  printf("   fuseserver_write %lu bytes to %d\n", size, ino);
+  printf("   fuseserver_write %lu bytes to %ld at %lu\n", size, ino, off);
   auto aw = size_t{};
   if (chfs->write(ino, size, off, buf, aw) != chfs_client::OK) {
     printf("   fuseserver_write err");
