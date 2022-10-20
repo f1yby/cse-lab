@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "chfs_client.h"
+
 /*
  * Your code here for Lab2A:
  * Here we treat each ChFS operation(especially write operation such as 'create',
@@ -225,7 +227,7 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
             << ": buffer_size: " << buf.size() << std::endl;
   auto l = strlen(name);
   ino_out = 0;
-  for (int i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
     std::cout << len << " "
@@ -249,7 +251,7 @@ int chfs_client::readdir(inum dir, std::list<dirent> &list) {
   ec->get(dir, buf);
   std::cout << "chfs_client: readdir " << dir << ": buffer_size: " << buf.size()
             << std::endl;
-  for (int i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 1;
     auto ino = *(reinterpret_cast<uint32_t *>(&buf[i]));
@@ -287,7 +289,7 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
   }
   if (off + size > buf.size()) { buf.resize(off + size, 0); }
   bytes_written = size;
-  for (int i = 0; i < size; ++i) {
+  for (uint32_t i = 0; i < size; ++i) {
     buf[off + i] = data[i];
     std::cout << buf[off + i];
   }
@@ -307,7 +309,7 @@ int chfs_client::unlink(inum parent, const char *name) {
   std::cout << "chfs_client: unlink " << name << " in " << parent
             << ": buffer_size: " << buf.size() << std::endl;
   auto l = strlen(name);
-  for (int i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
     std::cout << len << " "
