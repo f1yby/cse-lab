@@ -161,7 +161,6 @@ void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
   } else {
     auto ar = buf.size();
-    auto b = static_cast<char *>(malloc(ar));
     fuse_reply_buf(req, &buf[0], ar);
     printf("OK: read returns. %lu bytes read\n", ar);
   }

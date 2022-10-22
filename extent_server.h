@@ -21,6 +21,7 @@ protected:
 #endif
   inode_manager *im;
   chfs_persister *_persister;
+  chfs_command::txid_t txid_;
 
 public:
   extent_server();
@@ -29,7 +30,7 @@ public:
   int put(extent_protocol::extentid_t id, std::vector<uint8_t>, int &);
   int get(extent_protocol::extentid_t id, std::vector<uint8_t> &);
   int getattr(extent_protocol::extentid_t id, extent_protocol::attr &);
-  int remove(extent_protocol::extentid_t id, int &);
+  int remove(extent_protocol::extentid_t id);
 
   // Your code here for lab2A: add logging APIs
 };

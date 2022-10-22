@@ -1,10 +1,7 @@
 // chfs client.  implements FS operations using extent and lock server
 #include <fcntl.h>
 #include <iostream>
-#include <sstream>
 #include <stdio.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include "chfs_client.h"
@@ -39,7 +36,7 @@ std::string chfs_client::filename(inum inum) {
 }
 
 bool chfs_client::isfile(inum inum) {
-  extent_protocol::attr a;
+  extent_protocol::attr a{};
 
   if (ec->getattr(inum, a) != extent_protocol::OK) {
     printf("error getting attr\n");
@@ -60,7 +57,7 @@ bool chfs_client::isfile(inum inum) {
  * */
 
 bool chfs_client::isdir(inum inum) {
-  extent_protocol::attr a;
+  extent_protocol::attr a{};
   if (ec->getattr(inum, a) != extent_protocol::OK) {
     printf("error getting attr\n");
     return false;
@@ -75,7 +72,7 @@ bool chfs_client::isdir(inum inum) {
 }
 
 bool chfs_client::issymlink(inum inum) {
-  extent_protocol::attr a;
+  extent_protocol::attr a{};
   if (ec->getattr(inum, a) != extent_protocol::OK) {
     printf("error getting attr\n");
     return false;
@@ -93,7 +90,7 @@ int chfs_client::getfile(inum inum, fileinfo &fin) {
   int r = OK;
 
   printf("getfile %016llx\n", inum);
-  extent_protocol::attr a;
+  extent_protocol::attr a{};
   if (ec->getattr(inum, a) != extent_protocol::OK) {
     r = IOERR;
     goto release;
@@ -113,7 +110,7 @@ int chfs_client::getdir(inum inum, dirinfo &din) {
   int r = OK;
 
   printf("getdir %016llx\n", inum);
-  extent_protocol::attr a;
+  extent_protocol::attr a{};
   if (ec->getattr(inum, a) != extent_protocol::OK) {
     r = IOERR;
     goto release;
@@ -223,7 +220,7 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
   int r = OK;
   auto buf = std::vector<uint8_t>();
   ec->get(parent, buf);
-  std::cout << "chfs_client: lookup " << name << " in " << parent
+  std::cout << __PRETTY_FUNCTION__ << ": lookup " << name << " in " << parent
             << ": buffer_size: " << buf.size() << std::endl;
   auto l = strlen(name);
   ino_out = 0;

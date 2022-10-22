@@ -1,53 +1,87 @@
 // the extent server implementation
 
 #include "extent_server.h"
+#include <cstdlib>
 #include <sstream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
-extent_server::extent_server() {
+extent_server::extent_server() : txid_(0) {
   im = new inode_manager();
-  _persister = new chfs_persister("log"); // DO NOT change the dir name here
+  _persister = new chfs_persister("log");// DO NOT change the dir name here
+  _persister->restore_logdata();
 
-  // Your code here for Lab2A: recover data on startup
+  std::set<chfs_command::txid_t> finished;
+  for (const auto &i: _persister->log_entries) {
+    if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
+    std::cout << i.txid_ << " finished" << std::endl;
+  }
+
+  extent_protocol::extentid_t id = 0;
+  int size = 0;
+  for (const auto &i: _persister->log_entries) {
+    if (finished.count(i.txid_) != 0) {
+      switch (i.type_) {
+        case chfs_command::CMD_CREATE:
+          create(i.inum_, id);
+          break;
+        case chfs_command::CMD_PUT:
+          size = i.data_.size();
+          put(i.inum_, i.data_, size);
+          break;
+        case chfs_command::CMD_REMOVE:
+          remove(i.inum_);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  _persister->start_persist();
 }
 
 
 int extent_server::create(uint32_t type, extent_protocol::extentid_t &id) {
-  // alloc a new inode and return inum
-  printf("extent_server: create inode\n");
+
+  auto txid = ++txid_;
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_BEGIN, 0, {}});
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_CREATE, type, {}});
+
   id = im->alloc_inode(type);
+
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
 
   return extent_protocol::OK;
 }
 
 
-int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf, int &) {
+int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf,
+                       int &) {
   id &= 0x7fffffff;
 
-  const auto *cbuf = reinterpret_cast<const uint8_t *>(buf.data());
+  auto txid = ++txid_;
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_BEGIN, 0, {}});
+  _persister->append_log(
+      {txid, chfs_command::cmd_type::CMD_PUT, static_cast<uint32_t>(id), buf});
+
+  const auto *cbuf = static_cast<const uint8_t *>(buf.data());
   auto size = buf.size();
   im->write_file(id, cbuf, size);
 
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
+
   return extent_protocol::OK;
 }
 
-int extent_server::get(extent_protocol::extentid_t id, std::vector<uint8_t> &buf) {
-  printf("extent_server: get %lld\n", id);
-
+int extent_server::get(extent_protocol::extentid_t id,
+                       std::vector<uint8_t> &buf) {
   id &= 0x7fffffff;
 
   uint32_t size = 0;
   uint8_t *cbuf = nullptr;
 
   im->read_file(id, &cbuf, &size);
-  if (size == 0)
+  if (size == 0) {
     buf = {};
-  else {
+  } else {
     buf.resize(size, 0);
     mempcpy(&buf[0], cbuf, size);
     free(cbuf);
@@ -56,12 +90,11 @@ int extent_server::get(extent_protocol::extentid_t id, std::vector<uint8_t> &buf
   return extent_protocol::OK;
 }
 
-int extent_server::getattr(extent_protocol::extentid_t id, extent_protocol::attr &a) {
-  printf("extent_server: getattr %lld\n", id);
-
+int extent_server::getattr(extent_protocol::extentid_t id,
+                           extent_protocol::attr &a) {
   id &= 0x7fffffff;
 
-  extent_protocol::attr attr;
+  extent_protocol::attr attr{};
   memset(&attr, 0, sizeof(attr));
   im->get_attr(id, attr);
   a = attr;
@@ -69,11 +102,19 @@ int extent_server::getattr(extent_protocol::extentid_t id, extent_protocol::attr
   return extent_protocol::OK;
 }
 
-int extent_server::remove(extent_protocol::extentid_t id, int &) {
-  printf("extent_server: write %lld\n", id);
-
+int extent_server::remove(extent_protocol::extentid_t id) {
   id &= 0x7fffffff;
+
+  auto txid = ++txid_;
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_BEGIN, 0, {}});
+  _persister->append_log({txid,
+                          chfs_command::cmd_type::CMD_REMOVE,
+                          static_cast<uint32_t>(id),
+                          {}});
+
   im->remove_file(id);
+
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
 
   return extent_protocol::OK;
 }

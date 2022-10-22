@@ -14,12 +14,14 @@ private:
 public:
   extent_client();
 
-  extent_protocol::status create(uint32_t type, extent_protocol::extentid_t &eid);
+  extent_protocol::status create(uint32_t type,
+                                 extent_protocol::extentid_t &eid);
   extent_protocol::status get(extent_protocol::extentid_t eid,
                               std::vector<uint8_t> &buf);
   extent_protocol::status getattr(extent_protocol::extentid_t eid,
                                   extent_protocol::attr &a);
-  extent_protocol::status put(extent_protocol::extentid_t eid, std::vector<uint8_t> buf);
+  extent_protocol::status put(extent_protocol::extentid_t eid,
+                              std::vector<uint8_t> buf);
   extent_protocol::status remove(extent_protocol::extentid_t eid);
 };
 
