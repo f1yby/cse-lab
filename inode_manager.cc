@@ -213,8 +213,8 @@ void inode_manager::read_file(uint32_t inum, uint8_t **buf_out,
   if (queue.size() == NDIRECT) {
     bm->read_block(queue.back(), buf);
     queue.pop_back();
-    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] != 0;
-         ++i) {
+    for (uint32_t i = 0;
+         i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] != 0; ++i) {
       queue.push_back(reinterpret_cast<uint32_t *>(buf)[i]);
     }
   }
@@ -222,7 +222,7 @@ void inode_manager::read_file(uint32_t inum, uint8_t **buf_out,
 
   *size = inode->size;
   *buf_out = static_cast<uint8_t *>(malloc(inode->size));
-  auto rsize = 0;
+  uint32_t rsize = 0;
   for (const auto &i: queue) {
     auto s = *size > rsize ? *size - rsize : 0;
     bm->read_block(i, *buf_out + rsize, s);
@@ -246,8 +246,6 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
   auto *inode = get_inode(inum);
   if (inode == nullptr) { return; }
 
-  auto old_size = inode->size;
-  auto old_blocks = old_size == 0 ? 0 : (old_size - 1) / BLOCK_SIZE + 1;
   std::deque<uint32_t> blocks;
   for (int i = 0; i < NDIRECT && inode->blocks[i] != 0; ++i) {
     blocks.push_back(inode->blocks[i]);
@@ -267,10 +265,9 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
   if (blocks.size() == NDIRECT) {
     bm->read_block(blocks.back(), b);
     bm->free_block(blocks.back());
-    auto c = blocks.back();
     blocks.pop_back();
-    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(b)[i] != 0;
-         ++i) {
+    for (uint32_t i = 0;
+         i < NINDIRECT && reinterpret_cast<uint32_t *>(b)[i] != 0; ++i) {
       if (reinterpret_cast<uint32_t *>(b)[i] < BLOCK_NUM) {
         blocks.push_back(reinterpret_cast<uint32_t *>(b)[i]);
       }
@@ -327,7 +324,7 @@ void inode_manager::write_file(uint32_t inum, const uint8_t *buf,
   }
   //==<<
   bzero(inode->blocks, NDIRECT * sizeof(blockid_t));
-  for (int i = 0; i < blocks.size(); ++i) { inode->blocks[i] = blocks[i]; }
+  for (uint32_t i = 0; i < blocks.size(); ++i) { inode->blocks[i] = blocks[i]; }
   inode->size = size;
   inode->ctime = time(nullptr);
   inode->mtime = time(nullptr);
