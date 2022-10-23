@@ -19,7 +19,8 @@ extent_server::extent_server() : txid_(0) {
     if (finished.count(i.txid_) != 0) {
       switch (i.type_) {
         case chfs_command::CMD_CREATE:
-          create(i.inum_, id, 0);
+          occupy(i.inum_, (i.data_[0] << 0) + (i.data_[1] << 8) +
+                              (i.data_[2] << 16) + (i.data_[3] << 24));
           break;
         case chfs_command::CMD_PUT:
           put(i.inum_, i.data_, 0);
@@ -39,17 +40,31 @@ extent_server::extent_server() : txid_(0) {
 }
 
 
-int extent_server::create(uint32_t type, extent_protocol::extentid_t &id,
-                          chfs_command::txid_t txid) {
-
-  _persister->append_log({txid, chfs_command::cmd_type::CMD_CREATE, type, {}});
+extent_protocol::status extent_server::create(extent_protocol::extentid_t &id,
+                                              uint32_t type,
+                                              chfs_command::txid_t txid) {
 
   id = im->alloc_inode(type);
- // _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
+  _persister->append_log({txid,
+                          chfs_command::cmd_type::CMD_CREATE,
+                          static_cast<uint32_t>(id),
+                          {
+                              static_cast<unsigned char>((type >> 0) & 0xff),
+                              static_cast<unsigned char>((type >> 8) & 0xff),
+                              static_cast<unsigned char>((type >> 16) & 0xff),
+                              static_cast<unsigned char>((type >> 24) & 0xff),
+                          }});
 
   return extent_protocol::OK;
 }
 
+extent_protocol::status extent_server::occupy(extent_protocol::extentid_t id,
+                                              uint32_t type) {
+
+  im->occupy_inode(id, type);
+
+  return extent_protocol::OK;
+}
 
 int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf,
                        chfs_command::txid_t txid) {
@@ -62,7 +77,7 @@ int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf,
   auto size = buf.size();
   im->write_file(id, cbuf, size);
 
-    _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
+  _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
   return extent_protocol::OK;
 }
 

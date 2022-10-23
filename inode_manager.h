@@ -43,8 +43,10 @@ public:
 
   uint32_t alloc_block();
   uint32_t alloc_block_back();
+  void occupy_block(uint32_t id);
   void free_block(uint32_t id);
-  void read_block(uint32_t id, uint8_t *buf);  void read_block(uint32_t id, uint8_t *buf,uint32_t n);
+  void read_block(uint32_t id, uint8_t *buf);
+  void read_block(uint32_t id, uint8_t *buf, uint32_t n);
   void write_block(uint32_t id, const uint8_t *buf);
   void write_block(uint32_t id, const uint8_t *buf, uint32_t n);
 };
@@ -58,7 +60,7 @@ public:
 //(BLOCK_SIZE / sizeof(struct inode))
 
 // Block containing inode i
-#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i-1) / IPB + 2)
+#define IBLOCK(i, nblocks) ((nblocks) / BPB + (i - 1) / IPB + 2)
 
 // Bitmap bits per block
 #define BPB (BLOCK_SIZE * 8)
@@ -88,6 +90,7 @@ private:
 public:
   inode_manager();
   uint32_t alloc_inode(uint32_t type);
+  void occupy_inode(uint32_t inum, uint32_t type);
   void free_inode(uint32_t inum);
   void read_file(uint32_t inum, uint8_t **buf, uint32_t *size);
   void write_file(uint32_t inum, const uint8_t *buf, uint32_t size);

@@ -9,7 +9,7 @@ extent_client::extent_client() { es = new extent_server(); }
 extent_protocol::status extent_client::create(uint32_t type,
                                               extent_protocol::extentid_t &id,
                                               chfs_command::txid_t txid) {
-  return es->create(type, id, txid);
+  return es->create(id, type, txid);
 }
 
 extent_protocol::status extent_client::get(extent_protocol::extentid_t eid,

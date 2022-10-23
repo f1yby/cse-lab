@@ -102,7 +102,6 @@ block_manager::block_manager() : sb() {
   sb.size = BLOCK_SIZE * BLOCK_NUM;
   sb.nblocks = BLOCK_NUM;
   sb.ninodes = INODE_NUM;
-  // TODO: init super block on disk
 }
 
 void block_manager::read_block(uint32_t id, uint8_t *buf) {
@@ -130,6 +129,15 @@ void block_manager::write_block(uint32_t id, const uint8_t *buf, uint32_t n) {
     memcpy(b, buf, n);
     d->write_block(id, b);
   }
+}
+
+void block_manager::occupy_block(uint32_t id) {
+  auto buf = static_cast<uint8_t *>(malloc(BLOCK_SIZE));
+  auto bb = BBLOCK(id);
+  read_block(bb, buf);
+  buf[id % BPB / 8] |= (1 << (id & 0x7));
+  write_block(bb, buf);
+  free(buf);
 }
 
 // inode layer -----------------------------------------
@@ -355,4 +363,19 @@ void inode_manager::remove_file(uint32_t inum) {
   uint8_t buf[BLOCK_SIZE] = {0};
   bm->write_block(IBLOCK(inum, BLOCK_NUM), buf);
   free_inode(inum);
+}
+
+void inode_manager::occupy_inode(uint32_t inum, uint32_t type) {
+  auto id = IBLOCK(inum, BLOCK_NUM);
+  bm->occupy_block(id);
+  auto *buf = static_cast<uint8_t *>(malloc(BLOCK_SIZE));
+  bm->read_block(id, buf);
+  auto *i = reinterpret_cast<inode *>(buf);
+  i->type = type;
+  i->size = 0;
+  i->ctime = time(nullptr);
+  i->mtime = time(nullptr);
+  i->atime = time(nullptr);
+  bm->write_block(id, buf);
+  free(buf);
 }
