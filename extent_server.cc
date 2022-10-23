@@ -14,7 +14,6 @@ extent_server::extent_server() : txid_(0) {
     if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
   }
 
-  extent_protocol::extentid_t id = 0;
   for (const auto &i: _persister->log_entries) {
     if (finished.count(i.txid_) != 0) {
       switch (i.type_) {
