@@ -12,7 +12,6 @@ extent_server::extent_server() : txid_(0) {
   std::set<chfs_command::txid_t> finished;
   for (const auto &i: _persister->log_entries) {
     if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
-    std::cout << i.txid_ << " finished" << std::endl;
   }
 
   extent_protocol::extentid_t id = 0;
@@ -31,6 +30,9 @@ extent_server::extent_server() : txid_(0) {
         default:
           break;
       }
+    } else {
+      std::cout << __PRETTY_FUNCTION__ << ": uncommitted log " << i.txid_ << " "
+                << i.type_ << std::endl;
     }
   }
   _persister->start_persist();

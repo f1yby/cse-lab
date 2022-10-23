@@ -26,6 +26,7 @@ chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
   if (ec->put(1, {}, txid) != extent_protocol::OK) {
     ec->abort_tx(txid);
     printf("error init root dir\n");// XYB: init root dir
+    return;
   }
 
   ec->commit_tx(txid);
@@ -210,13 +211,13 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-    ec->commit_tx(txid);
+    ec->abort_tx(txid);
     return EXIST;
   }
 
   ec->create(extent_protocol::T_DIR, ino_out, txid);
   if (ino_out == 0) {
-    ec->commit_tx(txid);
+    ec->abort_tx(txid);
     return IOERR;
   }
 
@@ -303,16 +304,18 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
   int r = OK;
   auto buf = std::vector<uint8_t>();
   if (ec->get(ino, buf) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
+    ec->abort_tx(txid);
+
+    return IOERR;
   }
   if (off + size > buf.size()) { buf.resize(off + size, 0); }
   bytes_written = size;
   for (uint32_t i = 0; i < size; ++i) { buf[off + i] = data[i]; }
 
   if (ec->put(ino, buf, txid) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
+    ec->abort_tx(txid);
+
+    return IOERR;
   }
 
   ec->commit_tx(txid);
@@ -324,7 +327,6 @@ int chfs_client::unlink(inum parent, const char *name) {
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
-  int r = OK;
   auto buf = std::vector<uint8_t>();
 
   ec->get(parent, buf);
@@ -345,14 +347,13 @@ int chfs_client::unlink(inum parent, const char *name) {
 
       ec->commit_tx(txid);
 
-      return r;
+      return OK;
     }
   }
-  r = NOENT;
 
-  ec->commit_tx(txid);
+  ec->abort_tx(txid);
 
-  return r;
+  return NOENT;
 }
 
 int chfs_client::symlink(chfs_client::inum parent, const char *link,
@@ -366,7 +367,7 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
   lookup(parent, name, exist, ino_out);
   if (exist) {
 
-    ec->commit_tx(txid);
+    ec->abort_tx(txid);
 
     return EXIST;
   }
@@ -374,7 +375,7 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
   ec->create(extent_protocol::T_LINK, ino_out, txid);
   if (ino_out == 0) {
 
-    ec->commit_tx(txid);
+    ec->abort_tx(txid);
 
     return IOERR;
   }
