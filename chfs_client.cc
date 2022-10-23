@@ -88,20 +88,13 @@ int chfs_client::getfile(inum inum, fileinfo &fin) {
 }
 
 int chfs_client::getdir(inum inum, dirinfo &din) {
-  int r = OK;
 
-  printf("getdir %016llx\n", inum);
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    r = IOERR;
-    goto release;
-  }
+  if (ec->getattr(inum, a) != extent_protocol::OK) { return IOERR; }
   din.atime = a.atime;
   din.mtime = a.mtime;
   din.ctime = a.ctime;
-
-release:
-  return r;
+  return OK;
 }
 
 
@@ -157,7 +150,9 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
 
   ec->create(extent_protocol::T_FILE, ino_out, txid);
   if (ino_out == 0) {
+
     ec->abort_tx(txid);
+
     return IOERR;
   }
 
@@ -188,13 +183,17 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
+
     ec->abort_tx(txid);
+
     return EXIST;
   }
 
   ec->create(extent_protocol::T_DIR, ino_out, txid);
   if (ino_out == 0) {
+
     ec->abort_tx(txid);
+
     return IOERR;
   }
 
@@ -269,7 +268,6 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
-  int r = OK;
   auto buf = std::vector<uint8_t>();
   if (ec->get(ino, buf) != extent_protocol::OK) {
     ec->abort_tx(txid);
@@ -288,7 +286,7 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
 
   ec->commit_tx(txid);
 
-  return r;
+  return OK;
 }
 
 int chfs_client::unlink(inum parent, const char *name) {

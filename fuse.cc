@@ -42,7 +42,7 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
 
   st.st_ino = inum;
   if (chfs->isfile(inum)) {
-    chfs_client::fileinfo info;
+    chfs_client::fileinfo info{};
     ret = chfs->getfile(inum, info);
     if (ret != chfs_client::OK) { return ret; }
     st.st_mode = S_IFREG | 0666;
@@ -256,7 +256,7 @@ void fuseserver_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
 // the file.
 //
 void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
-  struct fuse_entry_param e;
+  struct fuse_entry_param e{};
   // In chfs, timeouts are always set to 0.0, and generations are always set to 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
@@ -282,7 +282,7 @@ struct dirbuf {
 };
 
 void dirbuf_add(struct dirbuf *b, const char *name, fuse_ino_t ino) {
-  struct stat stbuf;
+  struct stat stbuf {};
   size_t oldsize = b->size;
   b->size += fuse_dirent_size(strlen(name));
   b->p = (char *) realloc(b->p, b->size);
@@ -298,7 +298,7 @@ int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize,
   if ((size_t) off < bufsize)
     return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
   else
-    return fuse_reply_buf(req, NULL, 0);
+    return fuse_reply_buf(req, nullptr, 0);
 }
 
 //
@@ -313,7 +313,7 @@ int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize,
 void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                         struct fuse_file_info *fi) {
   chfs_client::inum inum = ino;// req->in.h.nodeid;
-  struct dirbuf b;
+  dirbuf b{};
 
   if (!chfs->isdir(inum)) {
     fuse_reply_err(req, ENOTDIR);
@@ -324,7 +324,7 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
   std::list<chfs_client::dirent> entries;
   chfs->readdir(inum, entries);
-  for (auto & entrie : entries) {
+  for (auto &entrie: entries) {
     dirbuf_add(&b, entrie.name.c_str(), (fuse_ino_t) entrie.inum);
   }
 
@@ -443,9 +443,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 #endif
-  if (argc != 2) {
-    exit(1);
-  }
+  if (argc != 2) { exit(1); }
   mountpoint = argv[1];
 
   srandom(getpid());
@@ -496,29 +494,21 @@ int main(int argc, char *argv[]) {
   int foreground;
   int res =
       fuse_parse_cmdline(&args, &mountpoint, 0 /*multithreaded*/, &foreground);
-  if (res == -1) {
-    return 0;
-  }
+  if (res == -1) { return 0; }
 
   args.allocated = 0;
 
   fd = fuse_mount(mountpoint, &args);
-  if (fd == -1) {
-    exit(1);
-  }
+  if (fd == -1) { exit(1); }
 
   struct fuse_session *se;
 
   se =
       fuse_lowlevel_new(&args, &fuseserver_oper, sizeof(fuseserver_oper), NULL);
-  if (se == 0) {
-    exit(1);
-  }
+  if (se == 0) { exit(1); }
 
   struct fuse_chan *ch = fuse_kern_chan_new(fd);
-  if (ch == NULL) {
-    exit(1);
-  }
+  if (ch == NULL) { exit(1); }
 
   fuse_session_add_chan(se, ch);
   // err = fuse_session_loop_mt(se);   // FK: wheelfs does this; why?
