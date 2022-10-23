@@ -45,6 +45,7 @@ int extent_server::create(uint32_t type, extent_protocol::extentid_t &id,
   _persister->append_log({txid, chfs_command::cmd_type::CMD_CREATE, type, {}});
 
   id = im->alloc_inode(type);
+ // _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
 
   return extent_protocol::OK;
 }
@@ -61,6 +62,7 @@ int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf,
   auto size = buf.size();
   im->write_file(id, cbuf, size);
 
+    _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
   return extent_protocol::OK;
 }
 

@@ -194,6 +194,7 @@ void persister<command>::restore_logdata() {
   close(in);
   std::cout << __PRETTY_FUNCTION__ << ": restored " << log_entries.size()
             << " log" << std::endl;
+  std::cout << __PRETTY_FUNCTION__ << ": set txid to " << txid_ << std::endl;
 };
 
 template<typename command>

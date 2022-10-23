@@ -25,7 +25,6 @@ chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
 
   if (ec->put(1, {}, txid) != extent_protocol::OK) {
     ec->abort_tx(txid);
-    printf("error init root dir\n");// XYB: init root dir
     return;
   }
 
@@ -47,16 +46,9 @@ std::string chfs_client::filename(inum inum) {
 bool chfs_client::isfile(inum inum) {
   extent_protocol::attr a{};
 
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    printf("error getting attr\n");
-    return false;
-  }
+  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
 
-  if (a.type == extent_protocol::T_FILE) {
-    printf("isfile: %lld is a file\n", inum);
-    return true;
-  }
-  printf("isfile: %lld is a dir\n", inum);
+  if (a.type == extent_protocol::T_FILE) { return true; }
   return false;
 }
 /** Your code here for Lab...
@@ -67,36 +59,22 @@ bool chfs_client::isfile(inum inum) {
 
 bool chfs_client::isdir(inum inum) {
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    printf("error getting attr\n");
-    return false;
-  }
+  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
 
-  if (a.type == extent_protocol::T_DIR) {
-    printf("isfile: %lld is a file\n", inum);
-    return true;
-  }
-  printf("isfile: %lld is a dir\n", inum);
+  if (a.type == extent_protocol::T_DIR) { return true; }
   return false;
 }
 
 bool chfs_client::issymlink(inum inum) {
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    printf("error getting attr\n");
-    return false;
-  }
+  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
 
-  if (a.type == extent_protocol::T_LINK) {
-    printf("isfile: %lld is a file\n", inum);
-    return true;
-  }
-  printf("isfile: %lld is a dir\n", inum);
+  if (a.type == extent_protocol::T_LINK) { return true; }
+
   return false;
 }
 
 int chfs_client::getfile(inum inum, fileinfo &fin) {
-  printf("getfile %016llx\n", inum);
 
   extent_protocol::attr a{};
   if (ec->getattr(inum, a) != extent_protocol::OK) { return IOERR; }
@@ -105,7 +83,6 @@ int chfs_client::getfile(inum inum, fileinfo &fin) {
   fin.mtime = a.mtime;
   fin.ctime = a.ctime;
   fin.size = a.size;
-  printf("getfile %016llx -> sz %llu\n", inum, fin.size);
 
   return OK;
 }
@@ -246,9 +223,6 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
   for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
-    std::cout << len << " "
-              << std::string(buf.begin() + i, buf.begin() + i + len)
-              << std::endl;
     if (l != len) { continue; }
 
     if (memcmp(&buf[i], name, len) == 0) {
@@ -262,38 +236,32 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
 }
 
 int chfs_client::readdir(inum dir, std::list<dirent> &list) {
-  int r = OK;
   auto buf = std::vector<uint8_t>();
   ec->get(dir, buf);
-  std::cout << "chfs_client: readdir " << dir << ": buffer_size: " << buf.size()
-            << std::endl;
   for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
+
     i += 1;
     auto ino = *(reinterpret_cast<uint32_t *>(&buf[i]));
+
     i += 4;
-    std::cout << len << ' '
-              << std::string(buf.begin() + i, buf.begin() + i + len)
-              << std::endl;
     list.push_back({{buf.begin() + i, buf.begin() + i + len}, ino});
   }
 
 
-  return r;
+  return OK;
 }
 
 int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
-  int r = OK;
   auto buf = std::vector<uint8_t>();
 
-  if (ec->get(ino, buf) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
-  }
+  if (ec->get(ino, buf) != extent_protocol::OK) { return IOERR; }
 
-  data = std::string(buf.begin() + off, buf.begin() + size + off);
+  int begin = std::min((int) off, (int) buf.size());
+  int end = std::min((int) size + (int) off, (int) buf.size());
+  data = std::string(buf.begin() + begin, buf.begin() + end);
 
-  return r;
+  return OK;
 }
 
 int chfs_client::write(inum ino, size_t size, off_t off, const char *data,

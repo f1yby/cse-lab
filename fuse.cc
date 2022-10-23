@@ -41,7 +41,6 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
   bzero(&st, sizeof(st));
 
   st.st_ino = inum;
-  printf("getattr %016llx %d\n", inum, chfs->isfile(inum));
   if (chfs->isfile(inum)) {
     chfs_client::fileinfo info;
     ret = chfs->getfile(inum, info);
@@ -52,8 +51,7 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_mtime = info.mtime;
     st.st_ctime = info.ctime;
     st.st_size = info.size;
-    printf("   getattr -> %llu\n", info.size);
-  } else if(chfs->isdir(inum)){
+  } else if (chfs->isdir(inum)) {
     chfs_client::dirinfo info;
     ret = chfs->getdir(inum, info);
     if (ret != chfs_client::OK) { return ret; }
@@ -62,7 +60,6 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_atime = info.atime;
     st.st_mtime = info.mtime;
     st.st_ctime = info.ctime;
-    printf("   getattr -> %lu %lu %lu\n", info.atime, info.mtime, info.ctime);
   } else {
     chfs_client::fileinfo info;
     ret = chfs->getfile(inum, info);
@@ -73,8 +70,6 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_mtime = info.mtime;
     st.st_ctime = info.ctime;
     st.st_size = info.size;
-    printf("   getattr -> %lu %lu %lu\n", info.atime, info.mtime, info.ctime);
-
   }
   return chfs_client::OK;
 }
@@ -123,11 +118,9 @@ void fuseserver_getattr(fuse_req_t req, fuse_ino_t ino,
 //
 void fuseserver_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
                         int to_set, struct fuse_file_info *fi) {
-  printf("fuseserver_setattr 0x%x\n", to_set);
   if (FUSE_SET_ATTR_SIZE & to_set) {
     struct stat st;
     st.st_size = attr->st_size;
-    printf("   fuseserver_setattr set size to %zu\n", attr->st_size);
     chfs->setattr(ino, attr->st_size);
     getattr(ino, st);
     fuse_reply_attr(req, &st, 0);
@@ -151,22 +144,12 @@ void fuseserver_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 //
 void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                      struct fuse_file_info *fi) {
-#if 1
-  printf("   fuseserver_read %lu bytes to %ld at %lu\n", size, ino, off);
-
   auto buf = std::string();
   if (chfs->read(ino, size, off, buf) != chfs_client::OK) {
     fuse_reply_err(req, EIO);
-    return;
-
   } else {
-    auto ar = buf.size();
-    fuse_reply_buf(req, &buf[0], ar);
-    printf("OK: read returns. %lu bytes read\n", ar);
+    fuse_reply_buf(req, &buf[0], buf.size());
   }
-#else
-  fuse_reply_err(req, ENOSYS);
-#endif
 }
 
 //
@@ -186,14 +169,11 @@ void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 //
 void fuseserver_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
                       size_t size, off_t off, struct fuse_file_info *fi) {
-  printf("   fuseserver_write %lu bytes to %ld at %lu\n", size, ino, off);
   auto aw = size_t{};
   if (chfs->write(ino, size, off, buf, aw) != chfs_client::OK) {
-    printf("   fuseserver_write err");
     fuse_reply_err(req, EIO);
   } else {
-    printf("   fuseserver_write ok %lu bytes written", aw);
-    if (fuse_reply_write(req, aw)) { printf("   fuseserver_write boom"); }
+    fuse_reply_write(req, aw);
   }
 }
 
@@ -219,7 +199,6 @@ chfs_client::status fuseserver_createhelper(fuse_ino_t parent, const char *name,
                                             mode_t mode,
                                             struct fuse_entry_param *e,
                                             int type) {
-  printf("fuseserver_create %s\n", name);
   int ret;
   // In chfs, timeouts are always set to 0.0, and generations are always set to 0
   e->attr_timeout = 0.0;
@@ -245,7 +224,6 @@ void fuseserver_create(fuse_req_t req, fuse_ino_t parent, const char *name,
                                      extent_protocol::T_FILE)) ==
       chfs_client::OK) {
     fuse_reply_create(req, &e, fi);
-    printf("OK: create returns.\n");
   } else {
     if (ret == chfs_client::EXIST) {
       fuse_reply_err(req, EEXIST);
@@ -337,8 +315,6 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
   chfs_client::inum inum = ino;// req->in.h.nodeid;
   struct dirbuf b;
 
-  printf("   fuseserver_readdir\n");
-
   if (!chfs->isdir(inum)) {
     fuse_reply_err(req, ENOTDIR);
     return;
@@ -348,9 +324,8 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
   std::list<chfs_client::dirent> entries;
   chfs->readdir(inum, entries);
-  for (std::list<chfs_client::dirent>::iterator it = entries.begin();
-       it != entries.end(); ++it) {
-    dirbuf_add(&b, it->name.c_str(), (fuse_ino_t) it->inum);
+  for (auto & entrie : entries) {
+    dirbuf_add(&b, entrie.name.c_str(), (fuse_ino_t) entrie.inum);
   }
 
   reply_buf_limited(req, b.p, b.size, off, size);
@@ -383,8 +358,6 @@ void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
   e.generation = 0;
   chfs_client::inum inum;
   auto ret = chfs->mkdir(parent, name, mode, inum);
-  std::cout << "fuseserver_mkdir " << name << " of " << inum << " in " << parent
-            << std::endl;
   if (ret == chfs_client::OK) {
     e.ino = inum;
     getattr(inum, e.attr);
@@ -433,13 +406,10 @@ void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
   e.entry_timeout = 0.0;
   e.generation = 0;
   chfs_client::inum inum;
-  auto ret = chfs->symlink(parent,link,  name, inum);
-  std::cout << "fuseserver_symlink " << name << " of " << inum << " in " << parent
-            << std::endl;
+  auto ret = chfs->symlink(parent, link, name, inum);
   if (ret == chfs_client::OK) {
     e.ino = inum;
     getattr(inum, e.attr);
-    std::cout << "OK mkdir " << name << std::endl;
     fuse_reply_entry(req, &e);
   } else {
     fuse_reply_err(req, EEXIST);
@@ -449,8 +419,6 @@ void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
 
 void fuseserver_statfs(fuse_req_t req) {
   struct statvfs buf;
-
-  printf("statfs\n");
 
   memset(&buf, 0, sizeof(buf));
 
@@ -476,7 +444,6 @@ int main(int argc, char *argv[]) {
     }
 #endif
   if (argc != 2) {
-    fprintf(stderr, "Usage: chfs_client <mountpoint>\n");
     exit(1);
   }
   mountpoint = argv[1];
@@ -530,7 +497,6 @@ int main(int argc, char *argv[]) {
   int res =
       fuse_parse_cmdline(&args, &mountpoint, 0 /*multithreaded*/, &foreground);
   if (res == -1) {
-    fprintf(stderr, "fuse_parse_cmdline failed\n");
     return 0;
   }
 
@@ -538,7 +504,6 @@ int main(int argc, char *argv[]) {
 
   fd = fuse_mount(mountpoint, &args);
   if (fd == -1) {
-    fprintf(stderr, "fuse_mount failed\n");
     exit(1);
   }
 
@@ -547,13 +512,11 @@ int main(int argc, char *argv[]) {
   se =
       fuse_lowlevel_new(&args, &fuseserver_oper, sizeof(fuseserver_oper), NULL);
   if (se == 0) {
-    fprintf(stderr, "fuse_lowlevel_new failed\n");
     exit(1);
   }
 
   struct fuse_chan *ch = fuse_kern_chan_new(fd);
   if (ch == NULL) {
-    fprintf(stderr, "fuse_kern_chan_new failed\n");
     exit(1);
   }
 
