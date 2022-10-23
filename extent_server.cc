@@ -7,7 +7,26 @@
 extent_server::extent_server() : txid_(0) {
   im = new inode_manager();
   _persister = new chfs_persister("log");// DO NOT change the dir name here
+
+  _persister->restore_checkpoint();
   _persister->restore_logdata();
+
+  for (const auto &i: _persister->bin_entries) {
+    switch (i.type_) {
+      case chfs_command::CMD_CREATE:
+        occupy(i.inum_, (i.data_[0] << 0) + (i.data_[1] << 8) +
+                            (i.data_[2] << 16) + (i.data_[3] << 24));
+        break;
+      case chfs_command::CMD_PUT:
+        put(i.inum_, i.data_, 0);
+        break;
+      case chfs_command::CMD_REMOVE:
+        remove(i.inum_, 0);
+        break;
+      default:
+        break;
+    }
+  }
 
   std::set<chfs_command::txid_t> finished;
   for (const auto &i: _persister->log_entries) {
@@ -134,6 +153,7 @@ extent_protocol::status extent_server::start_tx(chfs_command::txid_t &txid) {
 
 extent_protocol::status extent_server::commit_tx(chfs_command::txid_t txid) {
   _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
+  _persister->checkpoint();
   return extent_protocol::OK;
 }
 extent_protocol::status extent_server::abort_tx(chfs_command::txid_t txid) {

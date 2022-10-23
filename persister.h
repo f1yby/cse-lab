@@ -85,9 +85,8 @@ public:
     decode(&data_[0], data_.size());
   }
 
-  std::vector<uint8_t> into() {
-    cursor_ = 0;
-    return std::move(raw_data_);
+  [[nodiscard]] std::vector<uint8_t> into() const{
+    return raw_data_;
   }
 
   [[nodiscard]] uint64_t size() const { return data_.size(); }
@@ -107,7 +106,7 @@ class persister {
 
 public:
   explicit persister(const std::string &file_dir);
-  ~persister();
+  ~persister()=default;
 
   // persist data into solid binary file
   // You may modify parameters in these functions
@@ -122,6 +121,7 @@ public:
   [[nodiscard]] chfs_command::txid_t get_txid() const;
   void start_persist();
 
+  std::vector<command> bin_entries;
   std::vector<command> log_entries;
 
 private:
@@ -147,11 +147,6 @@ persister<command>::persister(const std::string &dir) : txid_(0) {
 }
 
 template<typename command>
-persister<command>::~persister() {
-  // Your code here for lab2A
-}
-
-template<typename command>
 void persister<command>::append_log(command log) {
   if (!start) { return; }
   log_entries.push_back(log);
@@ -167,7 +162,51 @@ void persister<command>::append_log(command log) {
 
 template<typename command>
 void persister<command>::checkpoint() {
-  // Your code here for lab2A
+  int out = open(file_path_checkpoint.c_str(), O_WRONLY | O_APPEND);
+  if (out < 0) { return; }
+
+  std::set<chfs_command::txid_t> finished;
+  for (const auto &i: log_entries) {
+    if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
+  }
+
+  for (const auto &i: log_entries) {
+    if (finished.count(i.txid_) != 0) {
+      switch (i.type_) {
+        case chfs_command::CMD_CREATE:
+        case chfs_command::CMD_PUT:
+        case chfs_command::CMD_REMOVE: {
+          auto raw = i.into();
+          while (true) {
+            ssize_t w = write(out, raw.data(), raw.size());
+            if (w >= 0 || (w == -1 && errno != EINTR)) { break; }
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < log_entries.size();) {
+    if (finished.count(log_entries[i].txid_) != 0) {
+      log_entries.erase(log_entries.begin() + i);
+    } else {
+      ++i;
+    }
+  }
+
+  out = open(file_path_logfile.c_str(), O_WRONLY | O_TRUNC);
+  if (out < 0) { return; }
+
+  for (const auto &i: log_entries) {
+    auto raw = i.into();
+    while (true) {
+      ssize_t w = write(out, raw.data(), raw.size());
+      if (w >= 0 || (w == -1 && errno != EINTR)) { break; }
+    }
+  }
+
+  close(out);
 }
 
 template<typename command>
@@ -193,13 +232,34 @@ void persister<command>::restore_logdata() {
   }
   close(in);
   std::cout << __PRETTY_FUNCTION__ << ": restored " << log_entries.size()
-            << " log" << std::endl;
+            << " log entries from logfile" << std::endl;
   std::cout << __PRETTY_FUNCTION__ << ": set txid to " << txid_ << std::endl;
 };
 
 template<typename command>
 void persister<command>::restore_checkpoint() {
-  // Your code here for lab2A
+  int in = open(file_path_checkpoint.c_str(), O_RDONLY);
+  if (in < 0) { return; }
+  while (true) {
+    uint32_t size;
+    ssize_t ar = read(in, &size, sizeof(size));
+    if (ar == 0) { break; }
+    if (ar == -1 && errno == EINTR) { continue; }
+    auto raw = std::vector<uint8_t>();
+    raw.resize(size);
+    ar = read(in, &raw[0], size);
+    if (ar == 0) {
+      std::cout << "in is broken" << std::endl;
+      break;
+    }
+    if (ar == -1 && errno == EINTR) { continue; }
+    command c = command(raw);
+    bin_entries.push_back(c);
+    txid_ = std::max(txid_, c.txid_);
+  }
+  close(in);
+  std::cout << __PRETTY_FUNCTION__ << ": restored " << bin_entries.size()
+            << " log entries from checkpoint" << std::endl;
 }
 template<typename command>
 chfs_command::txid_t persister<command>::get_txid() const {
