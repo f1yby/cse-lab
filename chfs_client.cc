@@ -19,8 +19,16 @@ chfs_client::chfs_client() { ec = new extent_client(); }
 
 chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
   ec = new extent_client();
-  if (ec->put(1, {0}) != extent_protocol::OK)
+
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
+
+  if (ec->put(1, {}, txid) != extent_protocol::OK) {
+    ec->abort_tx(txid);
     printf("error init root dir\n");// XYB: init root dir
+  }
+
+  ec->commit_tx(txid);
 }
 chfs_client::inum chfs_client::n2i(std::string n) {
   std::istringstream ist(n);
@@ -87,14 +95,10 @@ bool chfs_client::issymlink(inum inum) {
 }
 
 int chfs_client::getfile(inum inum, fileinfo &fin) {
-  int r = OK;
-
   printf("getfile %016llx\n", inum);
+
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) {
-    r = IOERR;
-    goto release;
-  }
+  if (ec->getattr(inum, a) != extent_protocol::OK) { return IOERR; }
 
   fin.atime = a.atime;
   fin.mtime = a.mtime;
@@ -102,8 +106,7 @@ int chfs_client::getfile(inum inum, fileinfo &fin) {
   fin.size = a.size;
   printf("getfile %016llx -> sz %llu\n", inum, fin.size);
 
-release:
-  return r;
+  return OK;
 }
 
 int chfs_client::getdir(inum inum, dirinfo &din) {
@@ -136,71 +139,85 @@ release:
 // Only support set size of attr
 // Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::setattr(inum ino, size_t size) {
-  int r = OK;
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
+
   auto buf = std::vector<uint8_t>();
 
   if (ec->get(ino, buf) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
+    ec->abort_tx(txid);
+    return IOERR;
   }
+
   buf.resize(size, 0);
-  if (ec->put(ino, buf) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
+  if (ec->put(ino, buf, txid) != extent_protocol::OK) {
+    ec->abort_tx(txid);
+    return IOERR;
   }
-  std::cout << "extent_server: setattr new size " << buf.size() << std::endl;
-  return r;
+
+  ec->commit_tx(txid);
+
+  return OK;
 }
 
 // Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::create(inum parent, const char *name, mode_t mode,
                         inum &ino_out) {
-  int r = OK;
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
 
   ino_out = 0;
   bool exist = false;
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-    r = EXIST;
-    return r;
+
+    ec->abort_tx(txid);
+
+    return EXIST;
   }
 
-  ec->create(extent_protocol::T_FILE, ino_out);
+  ec->create(extent_protocol::T_FILE, ino_out, txid);
   if (ino_out == 0) {
-    r = IOERR;
-    return r;
+    ec->abort_tx(txid);
+    return IOERR;
   }
 
   auto buf = std::vector<uint8_t>();
   ec->get(parent, buf);
+
   std::string n(name);
   buf.push_back(n.size());
   buf.resize(buf.size() + 4, 0);
+
   *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
   buf.insert(buf.end(), n.begin(), n.end());
-  ec->put(parent, buf);
-  return r;
+  ec->put(parent, buf, txid);
+
+  ec->commit_tx(txid);
+
+  return OK;
 }
 
 // Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
                        inum &ino_out) {
-  int r = OK;
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
 
   ino_out = 0;
   bool exist = false;
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-    r = EXIST;
-    return r;
+    ec->commit_tx(txid);
+    return EXIST;
   }
 
-  ec->create(extent_protocol::T_DIR, ino_out);
+  ec->create(extent_protocol::T_DIR, ino_out, txid);
   if (ino_out == 0) {
-    r = IOERR;
-    return r;
+    ec->commit_tx(txid);
+    return IOERR;
   }
 
   auto buf = std::vector<uint8_t>();
@@ -211,17 +228,18 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
   buf.resize(buf.size() + 4, 0);
   *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
   buf.insert(buf.end(), n.begin(), n.end());
-  ec->put(parent, buf);
-  return r;
+  ec->put(parent, buf, txid);
+
+  ec->commit_tx(txid);
+
+  return OK;
 }
 
 int chfs_client::lookup(inum parent, const char *name, bool &found,
                         inum &ino_out) {
-  int r = OK;
   auto buf = std::vector<uint8_t>();
   ec->get(parent, buf);
-  std::cout << __PRETTY_FUNCTION__ << ": lookup " << name << " in " << parent
-            << ": buffer_size: " << buf.size() << std::endl;
+
   auto l = strlen(name);
   ino_out = 0;
   for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
@@ -235,11 +253,11 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
     if (memcmp(&buf[i], name, len) == 0) {
       ino_out = *(reinterpret_cast<uint32_t *>(&buf[i - 4]));
       found = true;
-      return r;
+      return OK;
     }
   }
-  r = NOENT;
-  return r;
+
+  return NOENT;
 }
 
 int chfs_client::readdir(inum dir, std::list<dirent> &list) {
@@ -271,13 +289,17 @@ int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
     r = IOERR;
     return r;
   }
+
   data = std::string(buf.begin() + off, buf.begin() + size + off);
+
   return r;
 }
 
 int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
                        size_t &bytes_written) {
-  std::cout << "chfs_clent:: write" << std::endl;
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
+
   int r = OK;
   auto buf = std::vector<uint8_t>();
   if (ec->get(ino, buf) != extent_protocol::OK) {
@@ -286,26 +308,28 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
   }
   if (off + size > buf.size()) { buf.resize(off + size, 0); }
   bytes_written = size;
-  for (uint32_t i = 0; i < size; ++i) {
-    buf[off + i] = data[i];
-    std::cout << buf[off + i];
-  }
+  for (uint32_t i = 0; i < size; ++i) { buf[off + i] = data[i]; }
 
-  if (ec->put(ino, buf) != extent_protocol::OK) {
+  if (ec->put(ino, buf, txid) != extent_protocol::OK) {
     r = IOERR;
     return r;
   }
+
+  ec->commit_tx(txid);
+
   return r;
 }
 
 int chfs_client::unlink(inum parent, const char *name) {
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
 
   int r = OK;
   auto buf = std::vector<uint8_t>();
+
   ec->get(parent, buf);
-  std::cout << "chfs_client: unlink " << name << " in " << parent
-            << ": buffer_size: " << buf.size() << std::endl;
   auto l = strlen(name);
+
   for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
@@ -316,59 +340,68 @@ int chfs_client::unlink(inum parent, const char *name) {
 
     if (memcmp(&buf[i], name, len) == 0) {
       buf.erase(buf.begin() + i - 5, buf.begin() + i + len);
-      std::cout << "chfs_client: erased buf "
-                << std::string(buf.begin(), buf.end()) << std::endl;
-      ec->put(parent, buf);
+
+      ec->put(parent, buf, txid);
+
+      ec->commit_tx(txid);
+
       return r;
     }
   }
   r = NOENT;
+
+  ec->commit_tx(txid);
+
   return r;
 }
 
 int chfs_client::symlink(chfs_client::inum parent, const char *link,
                          const char *name, chfs_client::inum &ino_out) {
-
-  int r = OK;
+  chfs_command::txid_t txid;
+  ec->start_tx(txid);
 
   ino_out = 0;
   bool exist = false;
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-    r = EXIST;
-    return r;
+
+    ec->commit_tx(txid);
+
+    return EXIST;
   }
 
-  ec->create(extent_protocol::T_LINK, ino_out);
+  ec->create(extent_protocol::T_LINK, ino_out, txid);
   if (ino_out == 0) {
-    r = IOERR;
-    return r;
+
+    ec->commit_tx(txid);
+
+    return IOERR;
   }
+
   std::string l(link);
-  ec->put(ino_out, {l.begin(), l.end()});
+  ec->put(ino_out, {l.begin(), l.end()}, txid);
 
   auto buf = std::vector<uint8_t>();
   ec->get(parent, buf);
-  std::cout << std::string(buf.begin(), buf.end());
+
   std::string n(name);
   buf.push_back(n.size());
   buf.resize(buf.size() + 4, 0);
   *(reinterpret_cast<uint32_t *>(&buf[buf.size() - 4])) = ino_out;
   buf.insert(buf.end(), n.begin(), n.end());
-  ec->put(parent, buf);
-  return r;
+  ec->put(parent, buf, txid);
+
+  ec->commit_tx(txid);
+
+  return OK;
 }
 
 int chfs_client::readlink(chfs_client::inum ino, std::string &data) {
-  int r = OK;
   auto buf = std::vector<uint8_t>();
 
-  if (ec->get(ino, buf) != extent_protocol::OK) {
-    r = IOERR;
-    return r;
-  }
+  if (ec->get(ino, buf) != extent_protocol::OK) { return IOERR; }
   data = std::string(buf.begin(), buf.end());
   data.push_back(0);
-  return r;
+  return OK;
 }

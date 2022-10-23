@@ -2,18 +2,15 @@
 
 #include "extent_client.h"
 #include <iostream>
-#include <sstream>
-#include <stdio.h>
-#include <time.h>
-#include <unistd.h>
 #include <utility>
 
 extent_client::extent_client() { es = new extent_server(); }
 
 extent_protocol::status extent_client::create(uint32_t type,
-                                              extent_protocol::extentid_t &id) {
+                                              extent_protocol::extentid_t &id,
+                                              chfs_command::txid_t txid) {
   extent_protocol::status ret = extent_protocol::OK;
-  ret = es->create(type, id);
+  ret = es->create(type, id, txid);
   return ret;
 }
 
@@ -32,15 +29,22 @@ extent_protocol::status extent_client::getattr(extent_protocol::extentid_t eid,
 }
 
 extent_protocol::status extent_client::put(extent_protocol::extentid_t eid,
-                                           std::vector<uint8_t> buf) {
-  extent_protocol::status ret = extent_protocol::OK;
-  int r;
-  ret = es->put(eid, std::move(buf), r);
-  return ret;
+                                           std::vector<uint8_t> buf,
+                                           chfs_command::txid_t txid) {
+  return es->put(eid, std::move(buf), txid);
+  ;
 }
 
-extent_protocol::status extent_client::remove(extent_protocol::extentid_t eid) {
-  extent_protocol::status ret = extent_protocol::OK;
-  ret = es->remove(eid);
-  return ret;
+extent_protocol::status extent_client::remove(extent_protocol::extentid_t eid,
+                                              chfs_command::txid_t txid) {
+  return es->remove(eid, txid);
+}
+extent_protocol::status extent_client::start_tx(chfs_command::txid_t &txid) {
+  return es->start_tx(txid);
+}
+extent_protocol::status extent_client::commit_tx(chfs_command::txid_t txid) {
+  return es->commit_tx(txid);
+}
+extent_protocol::status extent_client::abort_tx(chfs_command::txid_t txid) {
+  return es->abort_tx(txid);
 }

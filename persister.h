@@ -35,6 +35,7 @@ public:
     CMD_CREATE,
     CMD_PUT,
     CMD_REMOVE,
+    CMD_ABORT,
   };
 
   txid_t txid_ = 0;

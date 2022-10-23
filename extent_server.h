@@ -6,9 +6,9 @@
 #include "extent_protocol.h"
 
 #include "inode_manager.h"
+#include "persister.h"
 #include <map>
 #include <string>
-#include "persister.h"
 
 class extent_server {
 protected:
@@ -26,13 +26,14 @@ protected:
 public:
   extent_server();
 
-  int create(uint32_t type, extent_protocol::extentid_t &id);
-  int put(extent_protocol::extentid_t id, std::vector<uint8_t>, int &);
+  int create(uint32_t type, extent_protocol::extentid_t &id,chfs_command::txid_t txid);
+  int put(extent_protocol::extentid_t id, std::vector<uint8_t>, chfs_command::txid_t txid);
   int get(extent_protocol::extentid_t id, std::vector<uint8_t> &);
   int getattr(extent_protocol::extentid_t id, extent_protocol::attr &);
-  int remove(extent_protocol::extentid_t id);
-
-  // Your code here for lab2A: add logging APIs
+  int remove(extent_protocol::extentid_t id,chfs_command::txid_t txid);
+  extent_protocol::status start_tx(chfs_command::txid_t &txid);
+  extent_protocol::status commit_tx(chfs_command::txid_t txid);
+  extent_protocol::status abort_tx(chfs_command::txid_t txid);
 };
 
 #endif
