@@ -1,700 +1,657 @@
 #ifndef rpc_h
 #define rpc_h
 
-#include <sys/socket.h>
 #include <netinet/in.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <atomic>
 #include <list>
 #include <map>
-#include <stdio.h>
-#include <unistd.h>
-#include <atomic>
 
-#include "thr_pool.h"
-#include "marshall.h"
 #include "connection.h"
+#include "marshall.h"
+#include "thr_pool.h"
 
 #ifdef DMALLOC
 #include "dmalloc.h"
 #endif
 
 class rpc_const {
-public:
-    static const unsigned int bind = 1;   // handler number reserved for bind
-    static const int timeout_failure = -1;
-    static const int unmarshal_args_failure = -2;
-    static const int unmarshal_reply_failure = -3;
-    static const int atmostonce_failure = -4;
-    static const int oldsrv_failure = -5;
-    static const int bind_failure = -6;
-    static const int cancel_failure = -7;
-    static const int unreachable_failure = -8;
+ public:
+  static const unsigned int bind = 1;  // handler number reserved for bind
+  static const int timeout_failure = -1;
+  static const int unmarshal_args_failure = -2;
+  static const int unmarshal_reply_failure = -3;
+  static const int atmostonce_failure = -4;
+  static const int oldsrv_failure = -5;
+  static const int bind_failure = -6;
+  static const int cancel_failure = -7;
+  static const int unreachable_failure = -8;
 };
 
 // rpc client endpoint.
 // manages a xid space per destination socket
 // threaded: multiple threads can be sending RPCs,
 class rpcc : public chanmgr {
+ private:
+  // manages per rpc info
+  struct caller {
+    caller(unsigned int xxid, unmarshall *un);
 
-private:
+    ~caller();
 
-    //manages per rpc info
-    struct caller {
-        caller(unsigned int xxid, unmarshall *un);
+    unsigned int xid;
+    unmarshall *un;
+    int intret;
+    bool done;
+    pthread_mutex_t m;
+    pthread_cond_t c;
+  };
 
-        ~caller();
+  void get_refconn(connection **ch);
 
-        unsigned int xid;
-        unmarshall *un;
-        int intret;
-        bool done;
-        pthread_mutex_t m;
-        pthread_cond_t c;
-    };
+  void update_xid_rep(unsigned int xid);
 
-    void get_refconn(connection **ch);
+  std::atomic_int _count;
+  sockaddr_in dst_;
+  unsigned int clt_nonce_;
+  unsigned int srv_nonce_;
+  bool bind_done_;
+  unsigned int xid_;
+  int lossytest_;
+  bool retrans_;
+  bool reachable_;
 
-    void update_xid_rep(unsigned int xid);
+  connection *chan_;
 
-    std::atomic_int _count;
-    sockaddr_in dst_;
-    unsigned int clt_nonce_;
-    unsigned int srv_nonce_;
-    bool bind_done_;
-    unsigned int xid_;
-    int lossytest_;
-    bool retrans_;
-    bool reachable_;
+  pthread_mutex_t m_;  // protect insert/delete to calls[]
+  pthread_mutex_t chan_m_;
 
-    connection *chan_;
+  bool destroy_wait_;
+  pthread_cond_t destroy_wait_c_;
 
-    pthread_mutex_t m_; // protect insert/delete to calls[]
-    pthread_mutex_t chan_m_;
+  std::map<int, caller *> calls_;
+  std::list<unsigned int> xid_rep_window_;
 
-    bool destroy_wait_;
-    pthread_cond_t destroy_wait_c_;
+  struct request {
+    request() { clear(); }
 
-    std::map<int, caller *> calls_;
-    std::list<unsigned int> xid_rep_window_;
-
-    struct request {
-        request() { clear(); }
-
-        void clear() {
-            buf.clear();
-            xid = -1;
-        }
-
-        bool isvalid() { return xid != -1; }
-
-        std::string buf;
-        int xid;
-    };
-
-    struct request dup_req_;
-    int xid_rep_done_;
-public:
-
-    rpcc(sockaddr_in d, bool retrans = true);
-
-    ~rpcc();
-
-    struct TO {
-        int to;
-    };
-    static const TO to_max;
-    static const TO to_min;
-
-    static TO to(int x) {
-        TO t;
-        t.to = x;
-        return t;
+    void clear() {
+      buf.clear();
+      xid = -1;
     }
 
-    unsigned int id() { return clt_nonce_; }
+    bool isvalid() { return xid != -1; }
 
-    int bind(TO to = to_max);
+    std::string buf;
+    int xid;
+  };
 
-    void set_reachable(bool r) { reachable_ = r; }
+  struct request dup_req_;
+  int xid_rep_done_;
 
-    bool reachable() const { return reachable_; }
+ public:
+  rpcc(sockaddr_in d, bool retrans = true);
 
-    void cancel();
+  ~rpcc();
 
-    int islossy() { return lossytest_ > 0; }
+  struct TO {
+    int to;
+  };
+  static const TO to_max;
+  static const TO to_min;
 
-    int count() const { return _count.load(); }
+  static TO to(int x) {
+    TO t;
+    t.to = x;
+    return t;
+  }
 
-    int call1(unsigned int proc,
-              marshall &req, unmarshall &rep, TO to);
+  unsigned int id() { return clt_nonce_; }
 
-    bool got_pdu(connection *c, char *b, int sz);
+  int bind(TO to = to_max);
 
+  void set_reachable(bool r) { reachable_ = r; }
 
-    template<class R>
-    int call_m(unsigned int proc, marshall &req, R &r, TO to);
+  bool reachable() const { return reachable_; }
 
-    template<class R>
-    int call(unsigned int proc, R &r, TO to = to_max);
+  void cancel();
 
-    template<class R, class A1>
-    int call(unsigned int proc, const A1 &a1, R &r, TO to = to_max);
+  int islossy() { return lossytest_ > 0; }
 
-    template<class R, class A1, class A2>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, R &r,
-             TO to = to_max);
+  int count() const { return _count.load(); }
 
-    template<class R, class A1, class A2, class A3>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
-             R &r, TO to = to_max);
+  int call1(unsigned int proc, marshall &req, unmarshall &rep, TO to);
 
-    template<class R, class A1, class A2, class A3, class A4>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
-             const A4 &a4, R &r, TO to = to_max);
+  bool got_pdu(connection *c, char *b, int sz);
 
-    template<class R, class A1, class A2, class A3, class A4, class A5>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
-             const A4 &a4, const A5 &a5, R &r, TO to = to_max);
+  template <class R>
+  int call_m(unsigned int proc, marshall &req, R &r, TO to);
 
-    template<class R, class A1, class A2, class A3, class A4, class A5,
-            class A6>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
-             const A4 &a4, const A5 &a5, const A6 &a6,
-             R &r, TO to = to_max);
+  template <class R>
+  int call(unsigned int proc, R &r, TO to = to_max);
 
-    template<class R, class A1, class A2, class A3, class A4, class A5,
-            class A6, class A7>
-    int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
-             const A4 &a4, const A5 &a5, const A6 &a6, const A7 &a7,
-             R &r, TO to = to_max);
+  template <class R, class A1>
+  int call(unsigned int proc, const A1 &a1, R &r, TO to = to_max);
 
+  template <class R, class A1, class A2>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, R &r, TO to = to_max);
+
+  template <class R, class A1, class A2, class A3>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3, R &r,
+           TO to = to_max);
+
+  template <class R, class A1, class A2, class A3, class A4>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+           const A4 &a4, R &r, TO to = to_max);
+
+  template <class R, class A1, class A2, class A3, class A4, class A5>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+           const A4 &a4, const A5 &a5, R &r, TO to = to_max);
+
+  template <class R, class A1, class A2, class A3, class A4, class A5, class A6>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+           const A4 &a4, const A5 &a5, const A6 &a6, R &r, TO to = to_max);
+
+  template <class R, class A1, class A2, class A3, class A4, class A5, class A6,
+            class A7>
+  int call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+           const A4 &a4, const A5 &a5, const A6 &a6, const A7 &a7, R &r,
+           TO to = to_max);
 };
 
-template<class R>
-int
-rpcc::call_m(unsigned int proc, marshall &req, R &r, TO to) {
-    unmarshall u;
-    _count.fetch_add(1);
-    int intret = call1(proc, req, u, to);
-    if (intret < 0) return intret;
-    u >> r;
-    if (u.okdone() != true) {
-        fprintf(stderr, "rpcc::call_m: failed to unmarshall the reply."
-                        "You are probably calling RPC 0x%x with wrong return "
-                        "type.\n", proc);
-        VERIFY(0);
-        return rpc_const::unmarshal_reply_failure;
-    }
-    return intret;
+template <class R>
+int rpcc::call_m(unsigned int proc, marshall &req, R &r, TO to) {
+  unmarshall u;
+  _count.fetch_add(1);
+  int intret = call1(proc, req, u, to);
+  if (intret < 0) return intret;
+  u >> r;
+  if (u.okdone() != true) {
+    fprintf(stderr,
+            "rpcc::call_m: failed to unmarshall the reply."
+            "You are probably calling RPC 0x%x with wrong return "
+            "type.\n",
+            proc);
+    VERIFY(0);
+    return rpc_const::unmarshal_reply_failure;
+  }
+  return intret;
 }
 
-template<class R>
-int
-rpcc::call(unsigned int proc, R &r, TO to) {
-    marshall m;
-    return call_m(proc, m, r, to);
+template <class R>
+int rpcc::call(unsigned int proc, R &r, TO to) {
+  marshall m;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1>
-int
-rpcc::call(unsigned int proc, const A1 &a1, R &r, TO to) {
-    marshall m;
-    m << a1;
-    return call_m(proc, m, r, to);
+template <class R, class A1>
+int rpcc::call(unsigned int proc, const A1 &a1, R &r, TO to) {
+  marshall m;
+  m << a1;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, R &r, TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2, class A3>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           const A3 &a3, R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    m << a3;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2, class A3>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+               R &r, TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  m << a3;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2, class A3, class A4>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           const A3 &a3, const A4 &a4, R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    m << a3;
-    m << a4;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2, class A3, class A4>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+               const A4 &a4, R &r, TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  m << a3;
+  m << a4;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2, class A3, class A4, class A5>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           const A3 &a3, const A4 &a4, const A5 &a5, R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    m << a3;
-    m << a4;
-    m << a5;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2, class A3, class A4, class A5>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+               const A4 &a4, const A5 &a5, R &r, TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  m << a3;
+  m << a4;
+  m << a5;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2, class A3, class A4, class A5,
-        class A6>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           const A3 &a3, const A4 &a4, const A5 &a5,
-           const A6 &a6, R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    m << a3;
-    m << a4;
-    m << a5;
-    m << a6;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2, class A3, class A4, class A5, class A6>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+               const A4 &a4, const A5 &a5, const A6 &a6, R &r, TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  m << a3;
+  m << a4;
+  m << a5;
+  m << a6;
+  return call_m(proc, m, r, to);
 }
 
-template<class R, class A1, class A2, class A3, class A4, class A5,
-        class A6, class A7>
-int
-rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2,
-           const A3 &a3, const A4 &a4, const A5 &a5,
-           const A6 &a6, const A7 &a7,
-           R &r, TO to) {
-    marshall m;
-    m << a1;
-    m << a2;
-    m << a3;
-    m << a4;
-    m << a5;
-    m << a6;
-    m << a7;
-    return call_m(proc, m, r, to);
+template <class R, class A1, class A2, class A3, class A4, class A5, class A6,
+          class A7>
+int rpcc::call(unsigned int proc, const A1 &a1, const A2 &a2, const A3 &a3,
+               const A4 &a4, const A5 &a5, const A6 &a6, const A7 &a7, R &r,
+               TO to) {
+  marshall m;
+  m << a1;
+  m << a2;
+  m << a3;
+  m << a4;
+  m << a5;
+  m << a6;
+  m << a7;
+  return call_m(proc, m, r, to);
 }
 
 bool operator<(const sockaddr_in &a, const sockaddr_in &b);
 
 class handler {
-public:
-    handler() {}
+ public:
+  handler() {}
 
-    virtual ~handler() {}
+  virtual ~handler() {}
 
-    virtual int fn(unmarshall &, marshall &) = 0;
+  virtual int fn(unmarshall &, marshall &) = 0;
 };
-
 
 // rpc server endpoint.
 class rpcs : public chanmgr {
+  typedef enum {
+    NEW,         // new RPC, not a duplicate
+    INPROGRESS,  // duplicate of an RPC we're still processing
+    DONE,        // duplicate of an RPC we already replied to (have reply)
+    FORGOTTEN,   // duplicate of an old RPC whose reply we've forgotten
+  } rpcstate_t;
 
-    typedef enum {
-        NEW,  // new RPC, not a duplicate
-        INPROGRESS, // duplicate of an RPC we're still processing
-        DONE, // duplicate of an RPC we already replied to (have reply)
-        FORGOTTEN,  // duplicate of an old RPC whose reply we've forgotten
-    } rpcstate_t;
+ private:
+  // state about an in-progress or completed RPC, for at-most-once.
+  // if cb_present is true, then the RPC is complete and a reply
+  // has been sent; in that case buf points to a copy of the reply,
+  // and sz holds the size of the reply.
+  struct reply_t {
+    reply_t(unsigned int _xid) {
+      xid = _xid;
+      cb_present = false;
+      buf = NULL;
+      sz = 0;
+    }
 
-private:
+    unsigned int xid;
+    bool cb_present;  // whether the reply buffer is valid
+    char *buf;        // the reply buffer
+    int sz;           // the size of reply buffer
+  };
 
-    // state about an in-progress or completed RPC, for at-most-once.
-    // if cb_present is true, then the RPC is complete and a reply
-    // has been sent; in that case buf points to a copy of the reply,
-    // and sz holds the size of the reply.
-    struct reply_t {
-        reply_t(unsigned int _xid) {
-            xid = _xid;
-            cb_present = false;
-            buf = NULL;
-            sz = 0;
-        }
+  int port_;
+  unsigned int nonce_;
 
-        unsigned int xid;
-        bool cb_present; // whether the reply buffer is valid
-        char *buf;      // the reply buffer
-        int sz;         // the size of reply buffer
-    };
+  // provide at most once semantics by maintaining a window of replies
+  // per client that that client hasn't acknowledged receiving yet.
+  // indexed by client nonce.
+  std::map<unsigned int, std::list<reply_t> > reply_window_;
 
-    int port_;
-    unsigned int nonce_;
+  void free_reply_window(void);
 
-    // provide at most once semantics by maintaining a window of replies
-    // per client that that client hasn't acknowledged receiving yet.
-    // indexed by client nonce.
-    std::map<unsigned int, std::list<reply_t> > reply_window_;
+  void add_reply(unsigned int clt_nonce, unsigned int xid, char *b, int sz);
 
-    void free_reply_window(void);
+  rpcstate_t checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
+                                       unsigned int rep_xid, char **b, int *sz);
 
-    void add_reply(unsigned int clt_nonce, unsigned int xid, char *b, int sz);
+  void updatestat(unsigned int proc);
 
-    rpcstate_t checkduplicate_and_update(unsigned int clt_nonce,
-                                         unsigned int xid, unsigned int rep_xid,
-                                         char **b, int *sz);
+  // latest connection to the client
+  std::map<unsigned int, connection *> conns_;
 
-    void updatestat(unsigned int proc);
+  // counting
+  const int counting_;
+  int curr_counts_;
+  std::map<int, int> counts_;
 
-    // latest connection to the client
-    std::map<unsigned int, connection *> conns_;
+  int lossytest_;
+  bool reachable_;
+  bool reliable_;
 
-    // counting
-    const int counting_;
-    int curr_counts_;
-    std::map<int, int> counts_;
+  // map proc # to function
+  std::map<int, handler *> procs_;
 
-    int lossytest_;
-    bool reachable_;
-    bool reliable_;
+  pthread_mutex_t procs_m_;         // protect insert/delete to procs[]
+  pthread_mutex_t count_m_;         // protect modification of counts
+  pthread_mutex_t reply_window_m_;  // protect reply window et al
+  pthread_mutex_t conss_m_;         // protect conns_
 
-    // map proc # to function
-    std::map<int, handler *> procs_;
+ protected:
+  struct djob_t {
+    djob_t(connection *c, char *b, int bsz) : buf(b), sz(bsz), conn(c) {}
 
-    pthread_mutex_t procs_m_; // protect insert/delete to procs[]
-    pthread_mutex_t count_m_;  //protect modification of counts
-    pthread_mutex_t reply_window_m_; // protect reply window et al
-    pthread_mutex_t conss_m_; // protect conns_
+    char *buf;
+    int sz;
+    connection *conn;
+  };
 
+  void dispatch(djob_t *);
 
-protected:
+  // internal handler registration
+  void reg1(unsigned int proc, handler *);
 
-    struct djob_t {
-        djob_t(connection *c, char *b, int bsz) : buf(b), sz(bsz), conn(c) {}
+  ThrPool *dispatchpool_;
+  tcpsconn *listener_;
 
-        char *buf;
-        int sz;
-        connection *conn;
-    };
+ public:
+  rpcs(unsigned int port, int counts = 0);
 
-    void dispatch(djob_t *);
+  ~rpcs();
 
-    // internal handler registration
-    void reg1(unsigned int proc, handler *);
+  // RPC handler for clients binding
+  int rpcbind(int a, int &r);
 
-    ThrPool *dispatchpool_;
-    tcpsconn *listener_;
+  int port() const { return port_; };
 
-public:
-    rpcs(unsigned int port, int counts = 0);
+  void set_reachable(bool r) { reachable_ = r; }
 
-    ~rpcs();
+  bool reachable() const { return reachable_; }
 
-    //RPC handler for clients binding
-    int rpcbind(int a, int &r);
+  void set_reliable(bool r) { reliable_ = r; }
 
-    int port() const { return port_; };
+  bool reliable() const { return reliable_; }
 
-    void set_reachable(bool r) { reachable_ = r; }
+  bool got_pdu(connection *c, char *b, int sz);
 
-    bool reachable() const { return reachable_; }
+  void unreg_all();
 
-    void set_reliable(bool r) { reliable_ = r; }
+  // register a handler
+  template <class S, class A1, class R>
+  void reg(unsigned int proc, S *, int (S::*meth)(const A1 a1, R &r));
 
-    bool reliable() const { return reliable_; }
+  template <class S, class A1, class A2, class R>
+  void reg(unsigned int proc, S *, int (S::*meth)(const A1 a1, const A2, R &r));
 
-    bool got_pdu(connection *c, char *b, int sz);
+  template <class S, class A1, class A2, class A3, class R>
+  void reg(unsigned int proc, S *,
+           int (S::*meth)(const A1, const A2, const A3, R &r));
 
-    void unreg_all();
+  template <class S, class A1, class A2, class A3, class A4, class R>
+  void reg(unsigned int proc, S *,
+           int (S::*meth)(const A1, const A2, const A3, const A4, R &r));
 
-    // register a handler
-    template<class S, class A1, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1 a1, R &r));
+  template <class S, class A1, class A2, class A3, class A4, class A5, class R>
+  void reg(unsigned int proc, S *,
+           int (S::*meth)(const A1, const A2, const A3, const A4, const A5,
+                          R &r));
 
-    template<class S, class A1, class A2, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1 a1, const A2,
-                                                    R &r));
-
-    template<class S, class A1, class A2, class A3, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1, const A2,
-                                                    const A3, R &r));
-
-    template<class S, class A1, class A2, class A3, class A4, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1, const A2,
-                                                    const A3, const A4, R &r));
-
-    template<class S, class A1, class A2, class A3, class A4, class A5, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1, const A2,
-                                                    const A3, const A4, const A5,
-                                                    R &r));
-
-    template<class S, class A1, class A2, class A3, class A4, class A5, class A6,
+  template <class S, class A1, class A2, class A3, class A4, class A5, class A6,
             class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1, const A2,
-                                                    const A3, const A4, const A5,
-                                                    const A6, R &r));
+  void reg(unsigned int proc, S *,
+           int (S::*meth)(const A1, const A2, const A3, const A4, const A5,
+                          const A6, R &r));
 
-    template<class S, class A1, class A2, class A3, class A4, class A5, class A6,
+  template <class S, class A1, class A2, class A3, class A4, class A5, class A6,
             class A7, class R>
-    void reg(unsigned int proc, S *, int (S::*meth)(const A1, const A2,
-                                                    const A3, const A4, const A5,
-                                                    const A6, const A7,
-                                                    R &r));
+  void reg(unsigned int proc, S *,
+           int (S::*meth)(const A1, const A2, const A3, const A4, const A5,
+                          const A6, const A7, R &r));
 };
 
-template<class S, class A1, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class R>
+void rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, R &r);
+    int (S::*meth)(const A1 a1, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, R &r)) : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            R r;
-            args >> a1;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      R r;
+      args >> a1;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            R r;
-            args >> a1;
-            args >> a2;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      R r;
+      args >> a1;
+      args >> a2;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class A3, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    const A3 a3, R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class A3, class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            A3 a3;
-            R r;
-            args >> a1;
-            args >> a2;
-            args >> a3;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, a3, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      A3 a3;
+      R r;
+      args >> a1;
+      args >> a2;
+      args >> a3;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, a3, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class A3, class A4, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    const A3 a3, const A4 a4,
-                                                    R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class A3, class A4, class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, const A3 a3,
+                              const A4 a4, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
-                                    const A4 a4, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
+                                const A4 a4, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            A3 a3;
-            A4 a4;
-            R r;
-            args >> a1;
-            args >> a2;
-            args >> a3;
-            args >> a4;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, a3, a4, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      A3 a3;
+      A4 a4;
+      R r;
+      args >> a1;
+      args >> a2;
+      args >> a3;
+      args >> a4;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, a3, a4, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class A3, class A4, class A5, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    const A3 a3, const A4 a4,
-                                                    const A5 a5, R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class A3, class A4, class A5, class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, const A3 a3,
+                              const A4 a4, const A5 a5, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
-                       const A5 a5, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
+                   const A5 a5, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
-                                    const A4 a4, const A5 a5, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
+                                const A4 a4, const A5 a5, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            A3 a3;
-            A4 a4;
-            A5 a5;
-            R r;
-            args >> a1;
-            args >> a2;
-            args >> a3;
-            args >> a4;
-            args >> a5;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, a3, a4, a5, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      A3 a3;
+      A4 a4;
+      A5 a5;
+      R r;
+      args >> a1;
+      args >> a2;
+      args >> a3;
+      args >> a4;
+      args >> a5;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, a3, a4, a5, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class A3, class A4, class A5, class A6, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    const A3 a3, const A4 a4,
-                                                    const A5 a5, const A6 a6,
-                                                    R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class A3, class A4, class A5, class A6,
+          class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, const A3 a3,
+                              const A4 a4, const A5 a5, const A6 a6, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
-                       const A5 a5, const A6 a6, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
+                   const A5 a5, const A6 a6, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
-                                    const A4 a4, const A5 a5, const A6 a6, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
+                                const A4 a4, const A5 a5, const A6 a6, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            A3 a3;
-            A4 a4;
-            A5 a5;
-            A6 a6;
-            R r;
-            args >> a1;
-            args >> a2;
-            args >> a3;
-            args >> a4;
-            args >> a5;
-            args >> a6;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, a3, a4, a5, a6, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      A3 a3;
+      A4 a4;
+      A5 a5;
+      A6 a6;
+      R r;
+      args >> a1;
+      args >> a2;
+      args >> a3;
+      args >> a4;
+      args >> a5;
+      args >> a6;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, a3, a4, a5, a6, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
 
-template<class S, class A1, class A2, class A3, class A4, class A5,
-        class A6, class A7, class R>
-void
-rpcs::reg(unsigned int proc, S *sob, int (S::*meth)(const A1 a1, const A2 a2,
-                                                    const A3 a3, const A4 a4,
-                                                    const A5 a5, const A6 a6,
-                                                    const A7 a7, R &r)) {
-    class h1 : public handler {
-    private:
-        S *sob;
+template <class S, class A1, class A2, class A3, class A4, class A5, class A6,
+          class A7, class R>
+void rpcs::reg(unsigned int proc, S *sob,
+               int (S::*meth)(const A1 a1, const A2 a2, const A3 a3,
+                              const A4 a4, const A5 a5, const A6 a6,
+                              const A7 a7, R &r)) {
+  class h1 : public handler {
+   private:
+    S *sob;
 
-        int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
-                       const A5 a5, const A6 a6, const A7 a7, R &r);
+    int (S::*meth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
+                   const A5 a5, const A6 a6, const A7 a7, R &r);
 
-    public:
-        h1(S *xsob, int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3,
-                                    const A4 a4, const A5 a5, const A6 a6,
-                                    const A7 a7, R &r))
-                : sob(xsob), meth(xmeth) {}
+   public:
+    h1(S *xsob,
+       int (S::*xmeth)(const A1 a1, const A2 a2, const A3 a3, const A4 a4,
+                       const A5 a5, const A6 a6, const A7 a7, R &r))
+        : sob(xsob), meth(xmeth) {}
 
-        int fn(unmarshall &args, marshall &ret) {
-            A1 a1;
-            A2 a2;
-            A3 a3;
-            A4 a4;
-            A5 a5;
-            A6 a6;
-            A7 a7;
-            R r;
-            args >> a1;
-            args >> a2;
-            args >> a3;
-            args >> a4;
-            args >> a5;
-            args >> a6;
-            args >> a7;
-            if (!args.okdone())
-                return rpc_const::unmarshal_args_failure;
-            int b = (sob->*meth)(a1, a2, a3, a4, a5, a6, a7, r);
-            ret << r;
-            return b;
-        }
-    };
-    reg1(proc, new h1(sob, meth));
+    int fn(unmarshall &args, marshall &ret) {
+      A1 a1;
+      A2 a2;
+      A3 a3;
+      A4 a4;
+      A5 a5;
+      A6 a6;
+      A7 a7;
+      R r;
+      args >> a1;
+      args >> a2;
+      args >> a3;
+      args >> a4;
+      args >> a5;
+      args >> a6;
+      args >> a7;
+      if (!args.okdone()) return rpc_const::unmarshal_args_failure;
+      int b = (sob->*meth)(a1, a2, a3, a4, a5, a6, a7, r);
+      ret << r;
+      return b;
+    }
+  };
+  reg1(proc, new h1(sob, meth));
 }
-
 
 void make_sockaddr(const char *hostandport, struct sockaddr_in *dst);
 
-void make_sockaddr(const char *host, const char *port,
-                   struct sockaddr_in *dst);
+void make_sockaddr(const char *host, const char *port, struct sockaddr_in *dst);
 
 int cmp_timespec(const struct timespec &a, const struct timespec &b);
 

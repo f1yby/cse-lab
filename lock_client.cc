@@ -1,36 +1,35 @@
 // RPC stubs for clients to talk to lock_server
 
 #include "lock_client.h"
-#include "rpc.h"
-#include <arpa/inet.h>
 
-#include <sstream>
-#include <iostream>
+#include <arpa/inet.h>
 #include <stdio.h>
 
+#include <iostream>
+#include <sstream>
+
+#include "rpc.h"
+
 lock_client::lock_client(std::string dst) {
-    sockaddr_in dstsock;
-    make_sockaddr(dst.c_str(), &dstsock);
-    cl = new rpcc(dstsock);
-    if (cl->bind() < 0) {
-        printf("lock_client: call bind\n");
-    }
+  sockaddr_in dstsock;
+  make_sockaddr(dst.c_str(), &dstsock);
+  cl = new rpcc(dstsock);
+  if (cl->bind() < 0) {
+    printf("lock_client: call bind\n");
+  }
 }
 
-int
-lock_client::stat(lock_protocol::lockid_t lid) {
-    int r;
-    lock_protocol::status ret = cl->call(lock_protocol::stat, cl->id(), lid, r);
-    VERIFY(ret == lock_protocol::OK);
-    return r;
+int lock_client::stat(lock_protocol::lockid_t lid) {
+  int r;
+  lock_protocol::status ret = cl->call(lock_protocol::stat, cl->id(), lid, r);
+  VERIFY(ret == lock_protocol::OK);
+  return r;
 }
 
-lock_protocol::status
-lock_client::acquire(lock_protocol::lockid_t lid) {
-    // Your lab2B part2 code goes here
+lock_protocol::status lock_client::acquire(lock_protocol::lockid_t lid) {
+  // Your lab2B part2 code goes here
 }
 
-lock_protocol::status
-lock_client::release(lock_protocol::lockid_t lid) {
-    // Your lab2B part2 code goes here
+lock_protocol::status lock_client::release(lock_protocol::lockid_t lid) {
+  // Your lab2B part2 code goes here
 }
