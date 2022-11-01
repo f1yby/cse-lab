@@ -17,8 +17,7 @@
  * to achive all-or-nothing for these transactions.
  */
 
-chfs_client::chfs_client(std::string extent_dst, std::string lock_dst)
-{
+chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
     ec = new extent_client(extent_dst);
     lc = new lock_client(lock_dst);
     if (ec->put(1, "") != extent_protocol::OK)
@@ -26,8 +25,7 @@ chfs_client::chfs_client(std::string extent_dst, std::string lock_dst)
 }
 
 chfs_client::inum
-chfs_client::n2i(std::string n)
-{
+chfs_client::n2i(std::string n) {
     std::istringstream ist(n);
     unsigned long long finum;
     ist >> finum;
@@ -35,16 +33,14 @@ chfs_client::n2i(std::string n)
 }
 
 std::string
-chfs_client::filename(inum inum)
-{
+chfs_client::filename(inum inum) {
     std::ostringstream ost;
     ost << inum;
     return ost.str();
 }
 
 bool
-chfs_client::isfile(inum inum)
-{
+chfs_client::isfile(inum inum) {
     extent_protocol::attr a;
 
     if (ec->getattr(inum, a) != extent_protocol::OK) {
@@ -55,10 +51,11 @@ chfs_client::isfile(inum inum)
     if (a.type == extent_protocol::T_FILE) {
         printf("isfile: %lld is a file\n", inum);
         return true;
-    } 
+    }
     printf("isfile: %lld is a dir\n", inum);
     return false;
 }
+
 /** Your code here for Lab...
  * You may need to add routines such as
  * readlink, issymlink here to implement symbolic link.
@@ -66,15 +63,13 @@ chfs_client::isfile(inum inum)
  * */
 
 bool
-chfs_client::isdir(inum inum)
-{
+chfs_client::isdir(inum inum) {
     // Oops! is this still correct when you implement symlink?
-    return ! isfile(inum);
+    return !isfile(inum);
 }
 
 int
-chfs_client::getfile(inum inum, fileinfo &fin)
-{
+chfs_client::getfile(inum inum, fileinfo &fin) {
     int r = OK;
 
     printf("getfile %016llx\n", inum);
@@ -90,13 +85,12 @@ chfs_client::getfile(inum inum, fileinfo &fin)
     fin.size = a.size;
     printf("getfile %016llx -> sz %llu\n", inum, fin.size);
 
-release:
+    release:
     return r;
 }
 
 int
-chfs_client::getdir(inum inum, dirinfo &din)
-{
+chfs_client::getdir(inum inum, dirinfo &din) {
     int r = OK;
 
     printf("getdir %016llx\n", inum);
@@ -109,7 +103,7 @@ chfs_client::getdir(inum inum, dirinfo &din)
     din.mtime = a.mtime;
     din.ctime = a.ctime;
 
-release:
+    release:
     return r;
 }
 
@@ -125,8 +119,7 @@ release:
 // Only support set size of attr
 // Your code here for Lab2A: add logging to ensure atomicity
 int
-chfs_client::setattr(inum ino, size_t size)
-{
+chfs_client::setattr(inum ino, size_t size) {
     int r = OK;
 
     /*
@@ -140,8 +133,7 @@ chfs_client::setattr(inum ino, size_t size)
 
 // Your code here for Lab2A: add logging to ensure atomicity
 int
-chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
-{
+chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out) {
     int r = OK;
 
     /*
@@ -155,8 +147,7 @@ chfs_client::create(inum parent, const char *name, mode_t mode, inum &ino_out)
 
 // Your code here for Lab2A: add logging to ensure atomicity
 int
-chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out)
-{
+chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out) {
     int r = OK;
 
     /*
@@ -169,8 +160,7 @@ chfs_client::mkdir(inum parent, const char *name, mode_t mode, inum &ino_out)
 }
 
 int
-chfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out)
-{
+chfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out) {
     int r = OK;
 
     /*
@@ -183,8 +173,7 @@ chfs_client::lookup(inum parent, const char *name, bool &found, inum &ino_out)
 }
 
 int
-chfs_client::readdir(inum dir, std::list<dirent> &list)
-{
+chfs_client::readdir(inum dir, std::list<dirent> &list) {
     int r = OK;
 
     /*
@@ -197,8 +186,7 @@ chfs_client::readdir(inum dir, std::list<dirent> &list)
 }
 
 int
-chfs_client::read(inum ino, size_t size, off_t off, std::string &data)
-{
+chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
     int r = OK;
 
     /*
@@ -212,8 +200,7 @@ chfs_client::read(inum ino, size_t size, off_t off, std::string &data)
 // Your code here for Lab2A: add logging to ensure atomicity
 int
 chfs_client::write(inum ino, size_t size, off_t off, const char *data,
-        size_t &bytes_written)
-{
+                   size_t &bytes_written) {
     int r = OK;
 
     /*
@@ -226,8 +213,7 @@ chfs_client::write(inum ino, size_t size, off_t off, const char *data,
 }
 
 // Your code here for Lab2A: add logging to ensure atomicity
-int chfs_client::unlink(inum parent,const char *name)
-{
+int chfs_client::unlink(inum parent, const char *name) {
     int r = OK;
 
     /*

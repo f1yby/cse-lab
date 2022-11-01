@@ -54,17 +54,20 @@ template<typename command>
 class persister {
 
 public:
-    persister(const std::string& file_dir);
+    persister(const std::string &file_dir);
+
     ~persister();
 
     // persist data into solid binary file
     // You may modify parameters in these functions
-    void append_log(const command& log);
+    void append_log(const command &log);
+
     void checkpoint();
 
     // restore data from solid binary file
     // You may modify parameters in these functions
     void restore_logdata();
+
     void restore_checkpoint();
 
 private:
@@ -78,7 +81,7 @@ private:
 };
 
 template<typename command>
-persister<command>::persister(const std::string& dir){
+persister<command>::persister(const std::string &dir) {
     // DO NOT change the file names here
     file_dir = dir;
     file_path_checkpoint = file_dir + "/checkpoint.bin";
@@ -92,7 +95,7 @@ persister<command>::~persister() {
 }
 
 template<typename command>
-void persister<command>::append_log(const command& log) {
+void persister<command>::append_log(const command &log) {
     // Your code here for lab2A
 
 }
