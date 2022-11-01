@@ -4,52 +4,55 @@
 // fifo template
 // blocks enq() and deq() when queue is FULL or EMPTY
 
-#include "lang/verify.h"
-#include "slock.h"
 #include <errno.h>
-#include <list>
 #include <sys/time.h>
 #include <time.h>
 
-template<class T>
+#include <list>
+
+#include "lang/verify.h"
+#include "slock.h"
+
+template <class T>
 class fifo {
-public:
+ public:
   fifo(int m = 0);
   ~fifo();
   bool enq(T, bool blocking = true);
   void deq(T *);
   bool size();
 
-private:
+ private:
   std::list<T> q_;
   pthread_mutex_t m_;
-  pthread_cond_t non_empty_c_;// q went non-empty
-  pthread_cond_t has_space_c_;// q is not longer overfull
-  unsigned int max_;          //maximum capacity of the queue, block enq threads if exceeds this limit
+  pthread_cond_t non_empty_c_;  // q went non-empty
+  pthread_cond_t has_space_c_;  // q is not longer overfull
+  unsigned int max_;  // maximum capacity of the queue, block enq threads if
+                      // exceeds this limit
 };
 
-template<class T>
+template <class T>
 fifo<T>::fifo(int limit) : max_(limit) {
   VERIFY(pthread_mutex_init(&m_, 0) == 0);
   VERIFY(pthread_cond_init(&non_empty_c_, 0) == 0);
   VERIFY(pthread_cond_init(&has_space_c_, 0) == 0);
 }
 
-template<class T>
+template <class T>
 fifo<T>::~fifo() {
-  //fifo is to be deleted only when no threads are using it!
+  // fifo is to be deleted only when no threads are using it!
   VERIFY(pthread_mutex_destroy(&m_) == 0);
   VERIFY(pthread_cond_destroy(&non_empty_c_) == 0);
   VERIFY(pthread_cond_destroy(&has_space_c_) == 0);
 }
 
-template<class T>
+template <class T>
 bool fifo<T>::size() {
   ScopedLock ml(&m_);
   return q_.size();
 }
 
-template<class T>
+template <class T>
 bool fifo<T>::enq(T e, bool blocking) {
   ScopedLock ml(&m_);
   while (1) {
@@ -66,7 +69,7 @@ bool fifo<T>::enq(T e, bool blocking) {
   return true;
 }
 
-template<class T>
+template <class T>
 void fifo<T>::deq(T *e) {
   ScopedLock ml(&m_);
 

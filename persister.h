@@ -1,33 +1,34 @@
-#ifndef persister_h
-#define persister_h
+#pragma once
 
-#include "extent_server.h"
-#include "rpc.h"
 #include <fcntl.h>
+#include <unistd.h>
+
 #include <fstream>
 #include <iostream>
 #include <mutex>
 #include <set>
-#include <unistd.h>
 #include <utility>
 
-#define MAX_LOG_SZ 1024
+#include "extent_server.h"
+#include "rpc.h"
 
 class extent_server;
 
 /*
  * Your code here for Lab2A:
  * Implement class chfs_command, you may need to add command types such as
- * 'create', 'put' here to represent different commands a transaction requires. 
- * 
+ * 'create', 'put' here to represent different commands a transaction requires.
+ *
  * Here are some tips:
  * 1. each transaction in ChFS consists of several chfs_commands.
- * 2. each transaction in ChFS MUST contain a BEGIN command and a COMMIT command.
- * 3. each chfs_commands contains transaction ID, command type, and other information.
+ * 2. each transaction in ChFS MUST contain a BEGIN command and a COMMIT
+ * command.
+ * 3. each chfs_commands contains transaction ID, command type, and other
+ * information.
  * 4. you can treat a chfs_command as a log entry.
  */
 class chfs_command {
-public:
+ public:
   typedef unsigned long long txid_t;
   enum cmd_type {
     CMD_BEGIN = 0,
@@ -64,7 +65,6 @@ public:
   chfs_command(txid_t txid, cmd_type type, uint32_t inum,
                const std::vector<uint8_t> &data)
       : txid_(txid), inum_(inum), type_(type), data_(data) {
-
     uint32_t size = sizeof(txid) + sizeof(inum) + sizeof(type_) + data.size();
     raw_data_.resize(sizeof(size) + size);
 
@@ -85,9 +85,7 @@ public:
     decode(&data_[0], data_.size());
   }
 
-  [[nodiscard]] std::vector<uint8_t> into() const{
-    return raw_data_;
-  }
+  [[nodiscard]] std::vector<uint8_t> into() const { return raw_data_; }
 
   [[nodiscard]] uint64_t size() const { return data_.size(); }
 };
@@ -95,18 +93,17 @@ public:
 /*
  * Your code here for Lab2A:
  * Implement class persister. A persister directly interacts with log files.
- * Remember it should not contain any transaction logic, its only job is to 
+ * Remember it should not contain any transaction logic, its only job is to
  * persist and recover data.
- * 
+ *
  * P.S. When and how to do checkpoint is up to you. Just keep your logfile size
  *      under MAX_LOG_SZ and checkpoint file size under DISK_SIZE.
  */
-template<typename command>
+template <typename command>
 class persister {
-
-public:
+ public:
   explicit persister(const std::string &file_dir);
-  ~persister()=default;
+  ~persister() = default;
 
   // persist data into solid binary file
   // You may modify parameters in these functions
@@ -124,7 +121,7 @@ public:
   std::vector<command> bin_entries;
   std::vector<command> log_entries;
 
-private:
+ private:
   std::mutex mtx;
   std::string file_dir;
   std::string file_path_checkpoint;
@@ -133,7 +130,7 @@ private:
   bool start = false;
 };
 
-template<typename command>
+template <typename command>
 persister<command>::persister(const std::string &dir) : txid_(0) {
   // DO NOT change the file names here
   file_dir = dir;
@@ -141,36 +138,50 @@ persister<command>::persister(const std::string &dir) : txid_(0) {
   file_path_logfile = file_dir + "/logdata.bin";
 
   int fpld = open(file_path_logfile.c_str(), O_CREAT | O_EXCL);
-  if (fpld > 0) { close(fpld); }
+  if (fpld > 0) {
+    close(fpld);
+  }
   int fpcd = open(file_path_checkpoint.c_str(), O_CREAT | O_EXCL);
-  if (fpcd > 0) { close(fpcd); }
+  if (fpcd > 0) {
+    close(fpcd);
+  }
 }
 
-template<typename command>
+template <typename command>
 void persister<command>::append_log(command log) {
-  if (!start) { return; }
+  if (!start) {
+    return;
+  }
   log_entries.push_back(log);
   std::vector<uint8_t> raw = log.into();
   int out = open(file_path_logfile.c_str(), O_WRONLY | O_APPEND);
-  if (out < 0) { return; }
+  if (out < 0) {
+    return;
+  }
   while (true) {
     ssize_t w = write(out, raw.data(), raw.size());
-    if (w >= 0 || (w == -1 && errno != EINTR)) { break; }
+    if (w >= 0 || (w == -1 && errno != EINTR)) {
+      break;
+    }
   }
   close(out);
 }
 
-template<typename command>
+template <typename command>
 void persister<command>::checkpoint() {
   int out = open(file_path_checkpoint.c_str(), O_WRONLY | O_APPEND);
-  if (out < 0) { return; }
-
-  std::set<chfs_command::txid_t> finished;
-  for (const auto &i: log_entries) {
-    if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
+  if (out < 0) {
+    return;
   }
 
-  for (const auto &i: log_entries) {
+  std::set<chfs_command::txid_t> finished;
+  for (const auto &i : log_entries) {
+    if (i.type_ == chfs_command::CMD_COMMIT) {
+      finished.insert(i.txid_);
+    }
+  }
+
+  for (const auto &i : log_entries) {
     if (finished.count(i.txid_) != 0) {
       switch (i.type_) {
         case chfs_command::CMD_CREATE:
@@ -179,7 +190,9 @@ void persister<command>::checkpoint() {
           auto raw = i.into();
           while (true) {
             ssize_t w = write(out, raw.data(), raw.size());
-            if (w >= 0 || (w == -1 && errno != EINTR)) { break; }
+            if (w >= 0 || (w == -1 && errno != EINTR)) {
+              break;
+            }
           }
           break;
         }
@@ -196,28 +209,38 @@ void persister<command>::checkpoint() {
   }
 
   out = open(file_path_logfile.c_str(), O_WRONLY | O_TRUNC);
-  if (out < 0) { return; }
+  if (out < 0) {
+    return;
+  }
 
-  for (const auto &i: log_entries) {
+  for (const auto &i : log_entries) {
     auto raw = i.into();
     while (true) {
       ssize_t w = write(out, raw.data(), raw.size());
-      if (w >= 0 || (w == -1 && errno != EINTR)) { break; }
+      if (w >= 0 || (w == -1 && errno != EINTR)) {
+        break;
+      }
     }
   }
 
   close(out);
 }
 
-template<typename command>
+template <typename command>
 void persister<command>::restore_logdata() {
   int in = open(file_path_logfile.c_str(), O_RDONLY);
-  if (in < 0) { return; }
+  if (in < 0) {
+    return;
+  }
   while (true) {
     uint32_t size;
     ssize_t ar = read(in, &size, sizeof(size));
-    if (ar == 0) { break; }
-    if (ar == -1 && errno == EINTR) { continue; }
+    if (ar == 0) {
+      break;
+    }
+    if (ar == -1 && errno == EINTR) {
+      continue;
+    }
     auto raw = std::vector<uint8_t>();
     raw.resize(size);
     ar = read(in, &raw[0], size);
@@ -225,7 +248,9 @@ void persister<command>::restore_logdata() {
       std::cout << "in is broken" << std::endl;
       break;
     }
-    if (ar == -1 && errno == EINTR) { continue; }
+    if (ar == -1 && errno == EINTR) {
+      continue;
+    }
     command c = command(raw);
     log_entries.push_back(c);
     txid_ = std::max(txid_, c.txid_);
@@ -236,15 +261,21 @@ void persister<command>::restore_logdata() {
   std::cout << __PRETTY_FUNCTION__ << ": set txid to " << txid_ << std::endl;
 };
 
-template<typename command>
+template <typename command>
 void persister<command>::restore_checkpoint() {
   int in = open(file_path_checkpoint.c_str(), O_RDONLY);
-  if (in < 0) { return; }
+  if (in < 0) {
+    return;
+  }
   while (true) {
     uint32_t size;
     ssize_t ar = read(in, &size, sizeof(size));
-    if (ar == 0) { break; }
-    if (ar == -1 && errno == EINTR) { continue; }
+    if (ar == 0) {
+      break;
+    }
+    if (ar == -1 && errno == EINTR) {
+      continue;
+    }
     auto raw = std::vector<uint8_t>();
     raw.resize(size);
     ar = read(in, &raw[0], size);
@@ -252,7 +283,9 @@ void persister<command>::restore_checkpoint() {
       std::cout << "in is broken" << std::endl;
       break;
     }
-    if (ar == -1 && errno == EINTR) { continue; }
+    if (ar == -1 && errno == EINTR) {
+      continue;
+    }
     command c = command(raw);
     bin_entries.push_back(c);
     txid_ = std::max(txid_, c.txid_);
@@ -261,15 +294,13 @@ void persister<command>::restore_checkpoint() {
   std::cout << __PRETTY_FUNCTION__ << ": restored " << bin_entries.size()
             << " log entries from checkpoint" << std::endl;
 }
-template<typename command>
+template <typename command>
 chfs_command::txid_t persister<command>::get_txid() const {
   return txid_;
 }
-template<typename command>
+template <typename command>
 void persister<command>::start_persist() {
   start = true;
 };
 
 using chfs_persister = persister<chfs_command>;
-
-#endif// persister_h

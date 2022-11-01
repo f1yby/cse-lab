@@ -23,20 +23,20 @@
 use strict;
 $| = 1;
 
-if($#ARGV != 0){
+if ($#ARGV != 0) {
     print STDERR "Usage: test-lab2a-part3-a.pl directory1\n";
     exit(1);
 }
 my $dir1 = $ARGV[0];
 my $f1 = "a$$";
-my $files = { };
+my $files = {};
 
 my $logfile = "log/logdata.bin";
 my $snpfile = "log/checkpoint.bin";
 my $MAX_LOG_SZ = 1024;
 my $MAX_SNP_SZ = 16777216;
 
-for(my $iters = 0; $iters < 20; $iters++){
+for (my $iters = 0; $iters < 20; $iters++) {
     print "Write and read one file: ";
     writeone($dir1, $f1, 600);
     checkcontent($dir1, $f1);
@@ -70,60 +70,60 @@ print "Passed all tests\n";
 exit(0);
 
 sub writeone {
-    my($d, $name, $len) = @_;
+    my ($d, $name, $len) = @_;
     my $contents = "";
 
     my $f = $d . "/" . $name;
 
     use FileHandle;
-    sysopen F, $f, O_TRUNC|O_RDWR|O_CREAT
-	or die "cannot create $f\n";
+    sysopen F, $f, O_TRUNC | O_RDWR | O_CREAT
+        or die "cannot create $f\n";
 
-    while(length($contents) < $len){
-	$contents .= rand();
+    while (length($contents) < $len) {
+        $contents .= rand();
     }
     $contents = substr($contents, 0, $len);
     $files->{$name} = $contents;
 
-    syswrite F, $files->{$name}, length($files->{$name}) 
-	or die "cannot write to $f";
+    syswrite F, $files->{$name}, length($files->{$name})
+        or die "cannot write to $f";
     close(F);
 }
 
 sub checkcontent {
-    my($d, $name) = @_;
+    my ($d, $name) = @_;
 
     my $f = $d . "/" . $name;
 
     open F, "$f" or die "could not open $f for reading";
     my $c2 = "";
-    while(<F>) {
-      $c2 .= $_;
+    while (<F>) {
+        $c2 .= $_;
     }
     close(F);
     $files->{$name} eq $c2 or die "content of $f is incorrect\n";
 }
 
 sub checknot {
-    my($d, $name) = @_;
+    my ($d, $name) = @_;
 
     my $f = $d . "/" . $name;
 
     my $x = open(F, $f);
-    if(defined($x)){
+    if (defined($x)) {
         print STDERR "$x exists but should not\n";
         exit(1);
     }
 }
 
 sub dircheck {
-    my($dir) = @_;
+    my ($dir) = @_;
 
     opendir(D, $dir);
     my %h;
     my $f;
-    while(defined($f = readdir(D))){
-        if(defined($h{$f})){
+    while (defined($f = readdir(D))) {
+        if (defined($h{$f})) {
             print STDERR "$f appears more than once in directory $dir\n";
             exit(1);
         }
@@ -131,8 +131,8 @@ sub dircheck {
     }
     closedir(D);
 
-    foreach $f (keys(%$files)){
-        if(!defined($h{$f})){
+    foreach $f (keys(%$files)) {
+        if (!defined($h{$f})) {
             print STDERR "$f is missing from directory $dir\n";
             exit(1);
         }
@@ -140,7 +140,7 @@ sub dircheck {
 }
 
 sub checksize {
-    my($f) = @_;
+    my ($f) = @_;
     if (!(-e $f)) {
         # print "Cannot find file $f.\n";
         return 0;
@@ -164,15 +164,16 @@ sub chfsrestart {
 
     # wait until chfs restart
     my $time = 5;
-    while($time--) {
+    while ($time--) {
         print "Wait for ChFS to mount...\n";
-        if(mounted()) { # mounted successfully
-            last;       # eq to 'break' in C
-        } else {        # wait for mounting
+        if (mounted()) { # mounted successfully
+            last;        # eq to 'break' in C
+        }
+        else {           # wait for mounting
             sleep(0.1);
         };
     }
-    
+
     if (!mounted()) {
         print "Fail to restart chfs!\n";
         exit(1);
@@ -187,7 +188,7 @@ sub chfscrash {
         print "Failed to crash ChFS: $!\n";
     }
     # wait for old chfs to exit on its own
-    while(mounted()) { 
+    while (mounted()) {
         print "Wait for ChFS to unmount...\n";
         sleep(0.1);
     }

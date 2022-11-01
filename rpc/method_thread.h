@@ -4,14 +4,15 @@
 // method_thread(): start a thread that runs an object method.
 // returns a pthread_t on success, and zero on error.
 
-#include "lang/verify.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static pthread_t
-method_thread_parent(void *(*fn)(void *), void *arg, bool detach) {
+#include "lang/verify.h"
+
+static pthread_t method_thread_parent(void *(*fn)(void *), void *arg,
+                                      bool detach) {
   pthread_t th;
   pthread_attr_t attr;
   pthread_attr_init(&attr);
@@ -34,8 +35,7 @@ method_thread_parent(void *(*fn)(void *), void *arg, bool detach) {
   return th;
 }
 
-static void
-method_thread_child() {
+static void method_thread_child() {
   // defer pthread_cancel() by default. check explicitly by
   // enabling then pthread_testcancel().
   int oldstate, oldtype;
@@ -43,15 +43,14 @@ method_thread_child() {
   VERIFY(pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldtype) == 0);
 }
 
-template<class C>
-pthread_t
-method_thread(C *o, bool detach, void (C::*m)()) {
+template <class C>
+pthread_t method_thread(C *o, bool detach, void (C::*m)()) {
   class XXX {
-  public:
+   public:
     C *o;
     void (C::*m)();
     static void *yyy(void *vvv) {
-      XXX *x = (XXX *) vvv;
+      XXX *x = (XXX *)vvv;
       C *o = x->o;
       void (C::*m)() = x->m;
       delete x;
@@ -63,19 +62,18 @@ method_thread(C *o, bool detach, void (C::*m)()) {
   XXX *x = new XXX;
   x->o = o;
   x->m = m;
-  return method_thread_parent(&XXX::yyy, (void *) x, detach);
+  return method_thread_parent(&XXX::yyy, (void *)x, detach);
 }
 
-template<class C, class A>
-pthread_t
-method_thread(C *o, bool detach, void (C::*m)(A), A a) {
+template <class C, class A>
+pthread_t method_thread(C *o, bool detach, void (C::*m)(A), A a) {
   class XXX {
-  public:
+   public:
     C *o;
     void (C::*m)(A a);
     A a;
     static void *yyy(void *vvv) {
-      XXX *x = (XXX *) vvv;
+      XXX *x = (XXX *)vvv;
       C *o = x->o;
       void (C::*m)(A) = x->m;
       A a = x->a;
@@ -89,56 +87,55 @@ method_thread(C *o, bool detach, void (C::*m)(A), A a) {
   x->o = o;
   x->m = m;
   x->a = a;
-  return method_thread_parent(&XXX::yyy, (void *) x, detach);
+  return method_thread_parent(&XXX::yyy, (void *)x, detach);
 }
 
 namespace {
-  // ~xavid: this causes a bizzare compile error on OS X.5 when
-  //         it's declared in the function, so I moved it out here.
-  template<class C, class A1, class A2>
-  class XXX {
-  public:
-    C *o;
-    void (C::*m)(A1 a1, A2 a2);
-    A1 a1;
-    A2 a2;
-    static void *yyy(void *vvv) {
-      XXX *x = (XXX *) vvv;
-      C *o = x->o;
-      void (C::*m)(A1, A2) = x->m;
-      A1 a1 = x->a1;
-      A2 a2 = x->a2;
-      delete x;
-      method_thread_child();
-      (o->*m)(a1, a2);
-      return 0;
-    }
-  };
-}// namespace
+// ~xavid: this causes a bizzare compile error on OS X.5 when
+//         it's declared in the function, so I moved it out here.
+template <class C, class A1, class A2>
+class XXX {
+ public:
+  C *o;
+  void (C::*m)(A1 a1, A2 a2);
+  A1 a1;
+  A2 a2;
+  static void *yyy(void *vvv) {
+    XXX *x = (XXX *)vvv;
+    C *o = x->o;
+    void (C::*m)(A1, A2) = x->m;
+    A1 a1 = x->a1;
+    A2 a2 = x->a2;
+    delete x;
+    method_thread_child();
+    (o->*m)(a1, a2);
+    return 0;
+  }
+};
+}  // namespace
 
-template<class C, class A1, class A2>
-pthread_t
-method_thread(C *o, bool detach, void (C::*m)(A1, A2), A1 a1, A2 a2) {
+template <class C, class A1, class A2>
+pthread_t method_thread(C *o, bool detach, void (C::*m)(A1, A2), A1 a1, A2 a2) {
   XXX<C, A1, A2> *x = new XXX<C, A1, A2>;
   x->o = o;
   x->m = m;
   x->a1 = a1;
   x->a2 = a2;
-  return method_thread_parent(&XXX<C, A1, A2>::yyy, (void *) x, detach);
+  return method_thread_parent(&XXX<C, A1, A2>::yyy, (void *)x, detach);
 }
 
-template<class C, class A1, class A2, class A3>
-pthread_t
-method_thread(C *o, bool detach, void (C::*m)(A1, A2, A3), A1 a1, A2 a2, A3 a3) {
+template <class C, class A1, class A2, class A3>
+pthread_t method_thread(C *o, bool detach, void (C::*m)(A1, A2, A3), A1 a1,
+                        A2 a2, A3 a3) {
   class XXX {
-  public:
+   public:
     C *o;
     void (C::*m)(A1 a1, A2 a2, A3 a3);
     A1 a1;
     A2 a2;
     A3 a3;
     static void *yyy(void *vvv) {
-      XXX *x = (XXX *) vvv;
+      XXX *x = (XXX *)vvv;
       C *o = x->o;
       void (C::*m)(A1, A2, A3) = x->m;
       A1 a1 = x->a1;
@@ -156,7 +153,7 @@ method_thread(C *o, bool detach, void (C::*m)(A1, A2, A3), A1 a1, A2 a2, A3 a3) 
   x->a1 = a1;
   x->a2 = a2;
   x->a3 = a3;
-  return method_thread_parent(&XXX::yyy, (void *) x, detach);
+  return method_thread_parent(&XXX::yyy, (void *)x, detach);
 }
 
 #endif

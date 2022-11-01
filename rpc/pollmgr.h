@@ -2,6 +2,7 @@
 #define pollmgr_h
 
 #include <sys/select.h>
+
 #include <vector>
 
 #ifdef __linux__
@@ -19,23 +20,24 @@ typedef enum {
 } poll_flag;
 
 class aio_mgr {
-public:
+ public:
   virtual void watch_fd(int fd, poll_flag flag) = 0;
   virtual bool unwatch_fd(int fd, poll_flag flag) = 0;
   virtual bool is_watched(int fd, poll_flag flag) = 0;
-  virtual void wait_ready(std::vector<int> *readable, std::vector<int> *writable) = 0;
+  virtual void wait_ready(std::vector<int> *readable,
+                          std::vector<int> *writable) = 0;
   virtual ~aio_mgr() {}
 };
 
 class aio_callback {
-public:
+ public:
   virtual void read_cb(int fd) = 0;
   virtual void write_cb(int fd) = 0;
   virtual ~aio_callback() {}
 };
 
 class PollMgr {
-public:
+ public:
   PollMgr();
   ~PollMgr();
 
@@ -48,12 +50,11 @@ public:
   void block_remove_fd(int fd);
   void wait_loop();
 
-
   static PollMgr *instance;
   static int useful;
   static int useless;
 
-private:
+ private:
   pthread_mutex_t m_;
   pthread_cond_t changedone_c_;
   pthread_t th_;
@@ -64,7 +65,7 @@ private:
 };
 
 class SelectAIO : public aio_mgr {
-public:
+ public:
   SelectAIO();
   ~SelectAIO();
   void watch_fd(int fd, poll_flag flag);
@@ -72,7 +73,7 @@ public:
   bool is_watched(int fd, poll_flag flag);
   void wait_ready(std::vector<int> *readable, std::vector<int> *writable);
 
-private:
+ private:
   fd_set rfds_;
   fd_set wfds_;
   int highfds_;
@@ -83,7 +84,7 @@ private:
 
 #ifdef __linux__
 class EPollAIO : public aio_mgr {
-public:
+ public:
   EPollAIO();
   ~EPollAIO();
   void watch_fd(int fd, poll_flag flag);
@@ -91,7 +92,7 @@ public:
   bool is_watched(int fd, poll_flag flag);
   void wait_ready(std::vector<int> *readable, std::vector<int> *writable);
 
-private:
+ private:
   int pollfd_;
   struct epoll_event ready_[MAX_POLL_FDS];
   int fdstatus_[MAX_POLL_FDS];

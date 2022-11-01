@@ -1,8 +1,9 @@
-#include "extent_server.h"
-#include "rpc.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "extent_server.h"
+#include "rpc.h"
 
 // Main loop of extent server
 
@@ -29,6 +30,5 @@ int main(int argc, char *argv[]) {
   server.reg(extent_protocol::put, &ls, &extent_server::put);
   server.reg(extent_protocol::remove, &ls, &extent_server::remove);
 
-  while (1)
-    sleep(1000);
+  while (1) sleep(1000);
 }

@@ -2,20 +2,20 @@
 #define chfs_client_h
 
 #include <string>
-//#include "chfs_protocol.h"
-#include "extent_client.h"
+// #include "chfs_protocol.h"
 #include <vector>
 
+#include "extent_client.h"
 
 class chfs_client {
   extent_client *ec;
 
-public:
+ public:
   typedef unsigned long long inum;
   enum xxstatus {
     OK,
     RPCERR,
-    NOENT,// No such file or directory
+    NOENT,  // No such file or directory
     IOERR,
     EXIST
   };
@@ -37,11 +37,11 @@ public:
     chfs_client::inum inum;
   };
 
-private:
+ private:
   static std::string filename(inum);
   static inum n2i(std::string);
 
-public:
+ public:
   chfs_client();
   chfs_client(std::string, std::string);
 

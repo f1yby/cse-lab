@@ -6,8 +6,6 @@
  * high-level interface only gives us complete paths.
  */
 
-#include "chfs_client.h"
-#include "lang/verify.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -17,6 +15,9 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+
+#include "chfs_client.h"
+#include "lang/verify.h"
 
 int myid;
 chfs_client *chfs;
@@ -44,7 +45,9 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
   if (chfs->isfile(inum)) {
     chfs_client::fileinfo info{};
     ret = chfs->getfile(inum, info);
-    if (ret != chfs_client::OK) { return ret; }
+    if (ret != chfs_client::OK) {
+      return ret;
+    }
     st.st_mode = S_IFREG | 0666;
     st.st_nlink = 1;
     st.st_atime = info.atime;
@@ -54,7 +57,9 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
   } else if (chfs->isdir(inum)) {
     chfs_client::dirinfo info;
     ret = chfs->getdir(inum, info);
-    if (ret != chfs_client::OK) { return ret; }
+    if (ret != chfs_client::OK) {
+      return ret;
+    }
     st.st_mode = S_IFDIR | 0777;
     st.st_nlink = 2;
     st.st_atime = info.atime;
@@ -63,7 +68,9 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
   } else {
     chfs_client::fileinfo info;
     ret = chfs->getfile(inum, info);
-    if (ret != chfs_client::OK) { return ret; }
+    if (ret != chfs_client::OK) {
+      return ret;
+    }
     st.st_mode = S_IFLNK | 0777;
     st.st_nlink = 1;
     st.st_atime = info.atime;
@@ -92,7 +99,7 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
 void fuseserver_getattr(fuse_req_t req, fuse_ino_t ino,
                         struct fuse_file_info *fi) {
   struct stat st;
-  chfs_client::inum inum = ino;// req->in.h.nodeid;
+  chfs_client::inum inum = ino;  // req->in.h.nodeid;
   chfs_client::status ret;
 
   ret = getattr(inum, st);
@@ -200,7 +207,8 @@ chfs_client::status fuseserver_createhelper(fuse_ino_t parent, const char *name,
                                             struct fuse_entry_param *e,
                                             int type) {
   int ret;
-  // In chfs, timeouts are always set to 0.0, and generations are always set to 0
+  // In chfs, timeouts are always set to 0.0, and generations are always set to
+  // 0
   e->attr_timeout = 0.0;
   e->entry_timeout = 0.0;
   e->generation = 0;
@@ -256,8 +264,9 @@ void fuseserver_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
 // the file.
 //
 void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
-  struct fuse_entry_param e{};
-  // In chfs, timeouts are always set to 0.0, and generations are always set to 0
+  struct fuse_entry_param e {};
+  // In chfs, timeouts are always set to 0.0, and generations are always set to
+  // 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
@@ -275,7 +284,6 @@ void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
   }
 }
 
-
 struct dirbuf {
   char *p;
   size_t size;
@@ -285,7 +293,7 @@ void dirbuf_add(struct dirbuf *b, const char *name, fuse_ino_t ino) {
   struct stat stbuf {};
   size_t oldsize = b->size;
   b->size += fuse_dirent_size(strlen(name));
-  b->p = (char *) realloc(b->p, b->size);
+  b->p = (char *)realloc(b->p, b->size);
   memset(&stbuf, 0, sizeof(stbuf));
   stbuf.st_ino = ino;
   fuse_add_dirent(b->p + oldsize, name, &stbuf, b->size);
@@ -295,7 +303,7 @@ void dirbuf_add(struct dirbuf *b, const char *name, fuse_ino_t ino) {
 
 int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize,
                       off_t off, size_t maxsize) {
-  if ((size_t) off < bufsize)
+  if ((size_t)off < bufsize)
     return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
   else
     return fuse_reply_buf(req, nullptr, 0);
@@ -312,7 +320,7 @@ int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize,
 //
 void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                         struct fuse_file_info *fi) {
-  chfs_client::inum inum = ino;// req->in.h.nodeid;
+  chfs_client::inum inum = ino;  // req->in.h.nodeid;
   dirbuf b{};
 
   if (!chfs->isdir(inum)) {
@@ -324,14 +332,13 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
   std::list<chfs_client::dirent> entries;
   chfs->readdir(inum, entries);
-  for (auto &entrie: entries) {
-    dirbuf_add(&b, entrie.name.c_str(), (fuse_ino_t) entrie.inum);
+  for (auto &entrie : entries) {
+    dirbuf_add(&b, entrie.name.c_str(), (fuse_ino_t)entrie.inum);
   }
 
   reply_buf_limited(req, b.p, b.size, off, size);
   free(b.p);
 }
-
 
 void fuseserver_open(fuse_req_t req, fuse_ino_t ino,
                      struct fuse_file_info *fi) {
@@ -350,9 +357,9 @@ void fuseserver_open(fuse_req_t req, fuse_ino_t ino,
 //
 void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
                       mode_t mode) {
-
   struct fuse_entry_param e;
-  // In chfs, timeouts are always set to 0.0, and generations are always set to 0
+  // In chfs, timeouts are always set to 0.0, and generations are always set to
+  // 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
@@ -401,7 +408,8 @@ void fuseserver_readlink(fuse_req_t req, fuse_ino_t ino) {
 void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
                         const char *name) {
   struct fuse_entry_param e;
-  // In chfs, timeouts are always set to 0.0, and generations are always set to 0
+  // In chfs, timeouts are always set to 0.0, and generations are always set to
+  // 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
@@ -415,7 +423,6 @@ void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     fuse_reply_err(req, EEXIST);
   }
 }
-
 
 void fuseserver_statfs(fuse_req_t req) {
   struct statvfs buf;
@@ -443,7 +450,9 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 #endif
-  if (argc != 2) { exit(1); }
+  if (argc != 2) {
+    exit(1);
+  }
   mountpoint = argv[1];
 
   srandom(getpid());
@@ -468,47 +477,55 @@ int main(int argc, char *argv[]) {
   fuseserver_oper.readlink = fuseserver_readlink;
   fuseserver_oper.symlink = fuseserver_symlink;
   /** Your code here for Lab.
-     * you may want to add
-     * routines here to implement symbolic link,
-     * rmdir, etc.
-     * */
+   * you may want to add
+   * routines here to implement symbolic link,
+   * rmdir, etc.
+   * */
 
   const char *fuse_argv[20];
   int fuse_argc = 0;
   fuse_argv[fuse_argc++] = argv[0];
 #ifdef __APPLE__
   fuse_argv[fuse_argc++] = "-o";
-  fuse_argv[fuse_argc++] = "nolocalcaches";// no dir entry caching
+  fuse_argv[fuse_argc++] = "nolocalcaches";  // no dir entry caching
   fuse_argv[fuse_argc++] = "-o";
   fuse_argv[fuse_argc++] = "daemon_timeout=86400";
 #endif
 
   // everyone can play, why not?
-  //fuse_argv[fuse_argc++] = "-o";
-  //fuse_argv[fuse_argc++] = "allow_other";
+  // fuse_argv[fuse_argc++] = "-o";
+  // fuse_argv[fuse_argc++] = "allow_other";
 
   fuse_argv[fuse_argc++] = mountpoint;
   fuse_argv[fuse_argc++] = "-d";
 
-  fuse_args args = FUSE_ARGS_INIT(fuse_argc, (char **) fuse_argv);
+  fuse_args args = FUSE_ARGS_INIT(fuse_argc, (char **)fuse_argv);
   int foreground;
   int res =
       fuse_parse_cmdline(&args, &mountpoint, 0 /*multithreaded*/, &foreground);
-  if (res == -1) { return 0; }
+  if (res == -1) {
+    return 0;
+  }
 
   args.allocated = 0;
 
   fd = fuse_mount(mountpoint, &args);
-  if (fd == -1) { exit(1); }
+  if (fd == -1) {
+    exit(1);
+  }
 
   struct fuse_session *se;
 
   se =
       fuse_lowlevel_new(&args, &fuseserver_oper, sizeof(fuseserver_oper), NULL);
-  if (se == 0) { exit(1); }
+  if (se == 0) {
+    exit(1);
+  }
 
   struct fuse_chan *ch = fuse_kern_chan_new(fd);
-  if (ch == NULL) { exit(1); }
+  if (ch == NULL) {
+    exit(1);
+  }
 
   fuse_session_add_chan(se, ch);
   // err = fuse_session_loop_mt(se);   // FK: wheelfs does this; why?

@@ -3,15 +3,15 @@
 #ifndef extent_server_h
 #define extent_server_h
 
-#include "extent_protocol.h"
-
-#include "inode_manager.h"
-#include "persister.h"
 #include <map>
 #include <string>
 
+#include "extent_protocol.h"
+#include "inode_manager.h"
+#include "persister.h"
+
 class extent_server {
-protected:
+ protected:
 #if 0
   typedef struct extent {
     std::string data;
@@ -23,9 +23,8 @@ protected:
   chfs_persister *_persister;
   chfs_command::txid_t txid_;
 
-public:
+ public:
   extent_server();
-
   extent_protocol::status create(extent_protocol::extentid_t &id, uint32_t type,
                                  chfs_command::txid_t txid);
   extent_protocol::status occupy(extent_protocol::extentid_t id, uint32_t type);

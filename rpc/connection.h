@@ -2,11 +2,11 @@
 #define connection_h 1
 
 #include <arpa/inet.h>
-#include <cstddef>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <cstddef>
 #include <map>
 
 #include "pollmgr.h"
@@ -14,19 +14,19 @@
 class connection;
 
 class chanmgr {
-public:
+ public:
   virtual bool got_pdu(connection *c, char *b, int sz) = 0;
   virtual ~chanmgr() {}
 };
 
 class connection : public aio_callback {
-public:
+ public:
   struct charbuf {
     charbuf() : buf(NULL), sz(0), solong(0) {}
     charbuf(char *b, int s) : buf(b), sz(s), solong(0) {}
     char *buf;
     int sz;
-    int solong;//amount of bytes written or read so far
+    int solong;  // amount of bytes written or read so far
   };
 
   connection(chanmgr *m1, int f1, int lossytest = 0);
@@ -46,7 +46,7 @@ public:
 
   int compare(connection *another);
 
-private:
+ private:
   bool readpdu();
   bool writepdu();
 
@@ -70,18 +70,18 @@ private:
 };
 
 class tcpsconn {
-public:
+ public:
   tcpsconn(chanmgr *m1, int port, int lossytest = 0);
   ~tcpsconn();
 
   void accept_conn();
 
-private:
+ private:
   pthread_mutex_t m_;
   pthread_t th_;
   int pipe_[2];
 
-  int tcp_;//file desciptor for accepting connection
+  int tcp_;  // file desciptor for accepting connection
   chanmgr *mgr_;
   int lossy_;
   std::map<int, connection *> conns_;
@@ -96,6 +96,7 @@ struct bundle {
   int lossy;
 };
 
-void start_accept_thread(chanmgr *mgr, int port, pthread_t *th, int *fd = NULL, int lossy = 0);
+void start_accept_thread(chanmgr *mgr, int port, pthread_t *th, int *fd = NULL,
+                         int lossy = 0);
 connection *connect_to_dst(const sockaddr_in &dst, chanmgr *mgr, int lossy = 0);
 #endif

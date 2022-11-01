@@ -3,15 +3,16 @@
 #ifndef extent_client_h
 #define extent_client_h
 
-#include "extent_protocol.h"
-#include "extent_server.h"
 #include <string>
 
+#include "extent_protocol.h"
+#include "extent_server.h"
+
 class extent_client {
-private:
+ private:
   extent_server *es;
 
-public:
+ public:
   extent_client();
 
   extent_protocol::status create(uint32_t type,

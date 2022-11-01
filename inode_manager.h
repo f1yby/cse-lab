@@ -3,8 +3,9 @@
 #ifndef inode_h
 #define inode_h
 
-#include "extent_protocol.h"
 #include <stdint.h>
+
+#include "extent_protocol.h"
 
 #define DISK_SIZE (1024 * 1024 * 16)
 #define BLOCK_SIZE 512
@@ -15,10 +16,10 @@ typedef uint32_t blockid_t;
 // disk layer -----------------------------------------
 
 class disk {
-private:
+ private:
   unsigned char blocks[BLOCK_NUM][BLOCK_SIZE];
 
-public:
+ public:
   disk();
   void read_block(uint32_t id, uint8_t *buf);
   void write_block(uint32_t id, const uint8_t *buf);
@@ -33,11 +34,11 @@ typedef struct superblock {
 } superblock_t;
 
 class block_manager {
-private:
+ private:
   disk *d;
   std::map<uint32_t, int> using_blocks;
 
-public:
+ public:
   block_manager();
   struct superblock sb;
 
@@ -79,15 +80,15 @@ typedef struct inode {
   unsigned int mtime;
   unsigned int ctime;
 
-  blockid_t blocks[NDIRECT];// Data block addresses
+  blockid_t blocks[NDIRECT];  // Data block addresses
 } inode_t;
 
 class inode_manager {
-private:
+ private:
   block_manager *bm;
   struct inode *get_inode(uint32_t inum);
 
-public:
+ public:
   inode_manager();
   uint32_t alloc_inode(uint32_t type);
   void occupy_inode(uint32_t inum, uint32_t type);

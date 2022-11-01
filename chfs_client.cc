@@ -1,21 +1,20 @@
 // chfs client.  implements FS operations using extent and lock server
+#include "chfs_client.h"
+
 #include <fcntl.h>
-#include <iostream>
 #include <stdio.h>
 #include <unistd.h>
 
-#include "chfs_client.h"
+#include <iostream>
 
 /*
  * Your code here for Lab2A:
- * Here we treat each ChFS operation(especially write operation such as 'create',
- * 'write' and 'symlink') as a transaction, your job is to use write ahead log
- * to achive all-or-nothing for these transactions.
+ * Here we treat each ChFS operation(especially write operation such as
+ * 'create', 'write' and 'symlink') as a transaction, your job is to use write
+ * ahead log to achive all-or-nothing for these transactions.
  */
 
-
 chfs_client::chfs_client() { ec = new extent_client(); }
-
 
 chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
   ec = new extent_client();
@@ -46,38 +45,51 @@ std::string chfs_client::filename(inum inum) {
 bool chfs_client::isfile(inum inum) {
   extent_protocol::attr a{};
 
-  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    return false;
+  }
 
-  if (a.type == extent_protocol::T_FILE) { return true; }
+  if (a.type == extent_protocol::T_FILE) {
+    return true;
+  }
   return false;
 }
 /** Your code here for Lab...
  * You may need to add routines such as
  * readlink, issymlink here to implement symbolic link.
- * 
+ *
  * */
 
 bool chfs_client::isdir(inum inum) {
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    return false;
+  }
 
-  if (a.type == extent_protocol::T_DIR) { return true; }
+  if (a.type == extent_protocol::T_DIR) {
+    return true;
+  }
   return false;
 }
 
 bool chfs_client::issymlink(inum inum) {
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) { return false; }
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    return false;
+  }
 
-  if (a.type == extent_protocol::T_LINK) { return true; }
+  if (a.type == extent_protocol::T_LINK) {
+    return true;
+  }
 
   return false;
 }
 
 int chfs_client::getfile(inum inum, fileinfo &fin) {
-
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) { return IOERR; }
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    return IOERR;
+  }
 
   fin.atime = a.atime;
   fin.mtime = a.mtime;
@@ -88,23 +100,23 @@ int chfs_client::getfile(inum inum, fileinfo &fin) {
 }
 
 int chfs_client::getdir(inum inum, dirinfo &din) {
-
   extent_protocol::attr a{};
-  if (ec->getattr(inum, a) != extent_protocol::OK) { return IOERR; }
+  if (ec->getattr(inum, a) != extent_protocol::OK) {
+    return IOERR;
+  }
   din.atime = a.atime;
   din.mtime = a.mtime;
   din.ctime = a.ctime;
   return OK;
 }
 
-
-#define EXT_RPC(xx)                                                            \
-  do {                                                                         \
-    if ((xx) != extent_protocol::OK) {                                         \
-      printf("EXT_RPC Error: %s:%d \n", __FILE__, __LINE__);                   \
-      r = IOERR;                                                               \
-      goto release;                                                            \
-    }                                                                          \
+#define EXT_RPC(xx)                                          \
+  do {                                                       \
+    if ((xx) != extent_protocol::OK) {                       \
+      printf("EXT_RPC Error: %s:%d \n", __FILE__, __LINE__); \
+      r = IOERR;                                             \
+      goto release;                                          \
+    }                                                        \
   } while (0)
 
 // Only support set size of attr
@@ -142,7 +154,6 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-
     ec->abort_tx(txid);
 
     return EXIST;
@@ -150,7 +161,6 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
 
   ec->create(extent_protocol::T_FILE, ino_out, txid);
   if (ino_out == 0) {
-
     ec->abort_tx(txid);
 
     return IOERR;
@@ -183,7 +193,6 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-
     ec->abort_tx(txid);
 
     return EXIST;
@@ -191,7 +200,6 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
   ec->create(extent_protocol::T_DIR, ino_out, txid);
   if (ino_out == 0) {
-
     ec->abort_tx(txid);
 
     return IOERR;
@@ -222,7 +230,9 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
   for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
-    if (l != len) { continue; }
+    if (l != len) {
+      continue;
+    }
 
     if (memcmp(&buf[i], name, len) == 0) {
       ino_out = *(reinterpret_cast<uint32_t *>(&buf[i - 4]));
@@ -247,17 +257,18 @@ int chfs_client::readdir(inum dir, std::list<dirent> &list) {
     list.push_back({{buf.begin() + i, buf.begin() + i + len}, ino});
   }
 
-
   return OK;
 }
 
 int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
   auto buf = std::vector<uint8_t>();
 
-  if (ec->get(ino, buf) != extent_protocol::OK) { return IOERR; }
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    return IOERR;
+  }
 
-  int begin = std::min((int) off, (int) buf.size());
-  int end = std::min((int) size + (int) off, (int) buf.size());
+  int begin = std::min((int)off, (int)buf.size());
+  int end = std::min((int)size + (int)off, (int)buf.size());
   data = std::string(buf.begin() + begin, buf.begin() + end);
 
   return OK;
@@ -274,9 +285,13 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
 
     return IOERR;
   }
-  if (off + size > buf.size()) { buf.resize(off + size, 0); }
+  if (off + size > buf.size()) {
+    buf.resize(off + size, 0);
+  }
   bytes_written = size;
-  for (uint32_t i = 0; i < size; ++i) { buf[off + i] = data[i]; }
+  for (uint32_t i = 0; i < size; ++i) {
+    buf[off + i] = data[i];
+  }
 
   if (ec->put(ino, buf, txid) != extent_protocol::OK) {
     ec->abort_tx(txid);
@@ -304,7 +319,9 @@ int chfs_client::unlink(inum parent, const char *name) {
     std::cout << len << " "
               << std::string(buf.begin() + i, buf.begin() + i + len)
               << std::endl;
-    if (l != len) { continue; }
+    if (l != len) {
+      continue;
+    }
 
     if (memcmp(&buf[i], name, len) == 0) {
       buf.erase(buf.begin() + i - 5, buf.begin() + i + len);
@@ -332,7 +349,6 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
 
   lookup(parent, name, exist, ino_out);
   if (exist) {
-
     ec->abort_tx(txid);
 
     return EXIST;
@@ -340,7 +356,6 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
 
   ec->create(extent_protocol::T_LINK, ino_out, txid);
   if (ino_out == 0) {
-
     ec->abort_tx(txid);
 
     return IOERR;
@@ -367,7 +382,9 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
 int chfs_client::readlink(chfs_client::inum ino, std::string &data) {
   auto buf = std::vector<uint8_t>();
 
-  if (ec->get(ino, buf) != extent_protocol::OK) { return IOERR; }
+  if (ec->get(ino, buf) != extent_protocol::OK) {
+    return IOERR;
+  }
   data = std::string(buf.begin(), buf.end());
   data.push_back(0);
   return OK;

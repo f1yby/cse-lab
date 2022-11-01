@@ -1,17 +1,18 @@
 // the extent server implementation
 
 #include "extent_server.h"
+
 #include <cstdlib>
 #include <sstream>
 
 extent_server::extent_server() : txid_(0) {
   im = new inode_manager();
-  _persister = new chfs_persister("log");// DO NOT change the dir name here
+  _persister = new chfs_persister("log");  // DO NOT change the dir name here
 
   _persister->restore_checkpoint();
   _persister->restore_logdata();
 
-  for (const auto &i: _persister->bin_entries) {
+  for (const auto &i : _persister->bin_entries) {
     switch (i.type_) {
       case chfs_command::CMD_CREATE:
         occupy(i.inum_, (i.data_[0] << 0) + (i.data_[1] << 8) +
@@ -29,11 +30,13 @@ extent_server::extent_server() : txid_(0) {
   }
 
   std::set<chfs_command::txid_t> finished;
-  for (const auto &i: _persister->log_entries) {
-    if (i.type_ == chfs_command::CMD_COMMIT) { finished.insert(i.txid_); }
+  for (const auto &i : _persister->log_entries) {
+    if (i.type_ == chfs_command::CMD_COMMIT) {
+      finished.insert(i.txid_);
+    }
   }
 
-  for (const auto &i: _persister->log_entries) {
+  for (const auto &i : _persister->log_entries) {
     if (finished.count(i.txid_) != 0) {
       switch (i.type_) {
         case chfs_command::CMD_CREATE:
@@ -57,11 +60,9 @@ extent_server::extent_server() : txid_(0) {
   _persister->start_persist();
 }
 
-
 extent_protocol::status extent_server::create(extent_protocol::extentid_t &id,
                                               uint32_t type,
                                               chfs_command::txid_t txid) {
-
   id = im->alloc_inode(type);
   _persister->append_log({txid,
                           chfs_command::cmd_type::CMD_CREATE,
@@ -78,7 +79,6 @@ extent_protocol::status extent_server::create(extent_protocol::extentid_t &id,
 
 extent_protocol::status extent_server::occupy(extent_protocol::extentid_t id,
                                               uint32_t type) {
-
   im->occupy_inode(id, type);
 
   return extent_protocol::OK;
@@ -133,14 +133,12 @@ int extent_server::remove(extent_protocol::extentid_t id,
                           chfs_command::txid_t txid) {
   id &= 0x7fffffff;
 
-
   _persister->append_log({txid,
                           chfs_command::cmd_type::CMD_REMOVE,
                           static_cast<uint32_t>(id),
                           {}});
 
   im->remove_file(id);
-
 
   return extent_protocol::OK;
 }
