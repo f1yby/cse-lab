@@ -9,15 +9,19 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <sstream>
 
 #include "persister.h"
 
-#include <cstdlib>
-#include <sstream>
-
 extent_server::extent_server() : txid_(0) {
+  int ignore;
+
+  // inode manager
   im = new inode_manager();
+
+  // persistence
+
   _persister = new chfs_persister("log");  // DO NOT change the dir name here
 
   _persister->restore_checkpoint();
@@ -30,10 +34,10 @@ extent_server::extent_server() : txid_(0) {
                             (i.data_[2] << 16) + (i.data_[3] << 24));
         break;
       case chfs_command::CMD_PUT:
-        put(i.inum_, i.data_, 0);
+        put(i.inum_, 0, i.data_, ignore);
         break;
       case chfs_command::CMD_REMOVE:
-        remove(i.inum_, 0);
+        remove(i.inum_, 0, ignore);
         break;
       default:
         break;
@@ -55,10 +59,10 @@ extent_server::extent_server() : txid_(0) {
                               (i.data_[2] << 16) + (i.data_[3] << 24));
           break;
         case chfs_command::CMD_PUT:
-          put(i.inum_, i.data_, 0);
+          put(i.inum_, 0, i.data_, ignore);
           break;
         case chfs_command::CMD_REMOVE:
-          remove(i.inum_, 0);
+          remove(i.inum_, 0, ignore);
           break;
         default:
           break;
@@ -71,18 +75,18 @@ extent_server::extent_server() : txid_(0) {
   _persister->start_persist();
 }
 
-extent_protocol::status extent_server::create(extent_protocol::extentid_t &id,
-                                              uint32_t type,
-                                              chfs_command::txid_t txid) {
+extent_protocol::status extent_server::create(uint32_t type,
+                                              chfs_command::txid_t txid,
+                                              extent_protocol::extentid_t &id) {
   id = im->alloc_inode(type);
   _persister->append_log({txid,
                           chfs_command::cmd_type::CMD_CREATE,
                           static_cast<uint32_t>(id),
                           {
-                              static_cast<unsigned char>((type >> 0) & 0xff),
-                              static_cast<unsigned char>((type >> 8) & 0xff),
-                              static_cast<unsigned char>((type >> 16) & 0xff),
-                              static_cast<unsigned char>((type >> 24) & 0xff),
+                              static_cast<char>((type >> 0) & 0xff),
+                              static_cast<char>((type >> 8) & 0xff),
+                              static_cast<char>((type >> 16) & 0xff),
+                              static_cast<char>((type >> 24) & 0xff),
                           }});
 
   return extent_protocol::OK;
@@ -95,26 +99,24 @@ extent_protocol::status extent_server::occupy(extent_protocol::extentid_t id,
   return extent_protocol::OK;
 }
 
-int extent_server::put(extent_protocol::extentid_t id, std::vector<uint8_t> buf,
-                       chfs_command::txid_t txid) {
+int extent_server::put(extent_protocol::extentid_t id,
+                       chfs_command::txid_t txid, std::string buf, int &) {
   id &= 0x7fffffff;
 
   _persister->append_log(
       {txid, chfs_command::cmd_type::CMD_PUT, static_cast<uint32_t>(id), buf});
 
-  const auto *cbuf = static_cast<const uint8_t *>(buf.data());
   auto size = buf.size();
-  im->write_file(id, cbuf, size);
+  im->write_file(id, buf.c_str(), size);
 
   return extent_protocol::OK;
 }
 
-int extent_server::get(extent_protocol::extentid_t id,
-                       std::vector<uint8_t> &buf) {
+int extent_server::get(extent_protocol::extentid_t id, std::string &buf) {
   id &= 0x7fffffff;
 
   uint32_t size = 0;
-  uint8_t *cbuf = nullptr;
+  char *cbuf = nullptr;
 
   im->read_file(id, &cbuf, &size);
   if (size == 0) {
@@ -141,7 +143,7 @@ int extent_server::getattr(extent_protocol::extentid_t id,
 }
 
 int extent_server::remove(extent_protocol::extentid_t id,
-                          chfs_command::txid_t txid) {
+                          chfs_command::txid_t txid, int &) {
   id &= 0x7fffffff;
 
   _persister->append_log({txid,
@@ -150,22 +152,25 @@ int extent_server::remove(extent_protocol::extentid_t id,
                           {}});
 
   im->remove_file(id);
- 
+
   return extent_protocol::OK;
 }
 
-extent_protocol::status extent_server::start_tx(chfs_command::txid_t &txid) {
+extent_protocol::status extent_server::start_tx(int ignore,
+                                                chfs_command::txid_t &txid) {
   txid = ++txid_;
   _persister->append_log({txid, chfs_command::cmd_type::CMD_BEGIN, 0, {}});
   return extent_protocol::OK;
 }
 
-extent_protocol::status extent_server::commit_tx(chfs_command::txid_t txid) {
+extent_protocol::status extent_server::commit_tx(chfs_command::txid_t txid,
+                                                 int &ignore) {
   _persister->append_log({txid, chfs_command::cmd_type::CMD_COMMIT, 0, {}});
   _persister->checkpoint();
   return extent_protocol::OK;
 }
-extent_protocol::status extent_server::abort_tx(chfs_command::txid_t txid) {
+extent_protocol::status extent_server::abort_tx(chfs_command::txid_t txid,
+                                                int &ignore) {
   _persister->append_log({txid, chfs_command::cmd_type::CMD_ABORT, 0, {}});
   return extent_protocol::OK;
 }

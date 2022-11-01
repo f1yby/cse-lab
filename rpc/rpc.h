@@ -169,7 +169,7 @@ int rpcc::call_m(unsigned int proc, marshall &req, R &r, TO to) {
   int intret = call1(proc, req, u, to);
   if (intret < 0) return intret;
   u >> r;
-  if (u.okdone() != true) {
+  if (!u.okdone()) {
     fprintf(stderr,
             "rpcc::call_m: failed to unmarshall the reply."
             "You are probably calling RPC 0x%x with wrong return "
@@ -268,9 +268,9 @@ bool operator<(const sockaddr_in &a, const sockaddr_in &b);
 
 class handler {
  public:
-  handler() {}
+  handler() = default;
 
-  virtual ~handler() {}
+  virtual ~handler() = default;
 
   virtual int fn(unmarshall &, marshall &) = 0;
 };

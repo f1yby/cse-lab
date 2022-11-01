@@ -10,9 +10,18 @@ class extent_protocol {
   typedef int status;
   typedef unsigned long long extentid_t;
   enum xxstatus { OK, RPCERR, NOENT, IOERR };
-  enum rpc_numbers { put = 0x6001, get, getattr, remove, create };
+  enum rpc_numbers {
+    put = 0x6001,
+    get,
+    getattr,
+    remove,
+    create,
+    start_tx,
+    commit_tx,
+    abort_tx,
+  };
 
-  enum types { T_DIR = 1, T_FILE };
+  enum types { T_DIR = 1, T_FILE, T_LINK };
 
   struct attr {
     uint32_t type;

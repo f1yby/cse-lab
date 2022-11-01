@@ -444,14 +444,10 @@ int main(int argc, char *argv[]) {
 
   setvbuf(stdout, NULL, _IONBF, 0);
 
-#if 0
-    if(argc != 4){
-        fprintf(stderr, "Usage: chfs_client <mountpoint> <port-extent-server> <port-lock-server>\n");
-        exit(1);
-    }
-#endif
-  if (argc != 2) {
-    fprintf(stderr, "Usage: chfs_client <mountpoint>\n");
+  if (argc != 4) {
+    fprintf(stderr,
+            "Usage: chfs_client <mountpoint> <port-extent-server> "
+            "<port-lock-server>\n");
     exit(1);
   }
   mountpoint = argv[1];

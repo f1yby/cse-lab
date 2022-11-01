@@ -6,9 +6,11 @@
 #include <vector>
 
 #include "extent_client.h"
+#include "lock_client.h"
 
 class chfs_client {
   extent_client *ec;
+  lock_client *lc;
 
  public:
   typedef unsigned long long inum;
@@ -42,7 +44,7 @@ class chfs_client {
   static inum n2i(std::string);
 
  public:
-  chfs_client();
+  chfs_client()=delete;
   chfs_client(std::string, std::string);
 
   bool isfile(inum);

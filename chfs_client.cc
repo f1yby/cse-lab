@@ -1,24 +1,15 @@
 // chfs client.  implements FS operations using extent and lock server
 #include "chfs_client.h"
 
-#include <fcntl.h>
-#include <stdio.h>
 #include <unistd.h>
 
 #include <iostream>
 
-/*
- * Your code here for Lab2A:
- * Here we treat each ChFS operation(especially write operation such as
- * 'create', 'write' and 'symlink') as a transaction, your job is to use write
- * ahead log to achive all-or-nothing for these transactions.
- */
-
-chfs_client::chfs_client() { ec = new extent_client(); }
+#include "lock_client.h"
 
 chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
-  ec = new extent_client();
-
+  ec = new extent_client(extent_dst);
+  lc = new lock_client(lock_dst);
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
@@ -120,12 +111,11 @@ int chfs_client::getdir(inum inum, dirinfo &din) {
   } while (0)
 
 // Only support set size of attr
-// Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::setattr(inum ino, size_t size) {
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
 
   if (ec->get(ino, buf) != extent_protocol::OK) {
     ec->abort_tx(txid);
@@ -143,7 +133,6 @@ int chfs_client::setattr(inum ino, size_t size) {
   return OK;
 }
 
-// Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::create(inum parent, const char *name, mode_t mode,
                         inum &ino_out) {
   chfs_command::txid_t txid;
@@ -159,14 +148,13 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
     return EXIST;
   }
 
-  ec->create(extent_protocol::T_FILE, ino_out, txid);
+  ec->create(extent_protocol::T_FILE, txid, ino_out);
   if (ino_out == 0) {
     ec->abort_tx(txid);
-
     return IOERR;
   }
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   ec->get(parent, buf);
 
   std::string n(name);
@@ -182,7 +170,6 @@ int chfs_client::create(inum parent, const char *name, mode_t mode,
   return OK;
 }
 
-// Your code here for Lab2A: add logging to ensure atomicity
 int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
                        inum &ino_out) {
   chfs_command::txid_t txid;
@@ -198,14 +185,14 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
     return EXIST;
   }
 
-  ec->create(extent_protocol::T_DIR, ino_out, txid);
+  ec->create(extent_protocol::T_DIR, txid, ino_out);
   if (ino_out == 0) {
     ec->abort_tx(txid);
 
     return IOERR;
   }
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   ec->get(parent, buf);
   std::cout << std::string(buf.begin(), buf.end());
   std::string n(name);
@@ -222,12 +209,12 @@ int chfs_client::mkdir(inum parent, const char *name, mode_t mode,
 
 int chfs_client::lookup(inum parent, const char *name, bool &found,
                         inum &ino_out) {
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   ec->get(parent, buf);
 
   auto l = strlen(name);
   ino_out = 0;
-  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
     if (l != len) {
@@ -245,9 +232,9 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
 }
 
 int chfs_client::readdir(inum dir, std::list<dirent> &list) {
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   ec->get(dir, buf);
-  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len; i < buf.size(); i += len) {
     len = buf[i];
 
     i += 1;
@@ -261,7 +248,7 @@ int chfs_client::readdir(inum dir, std::list<dirent> &list) {
 }
 
 int chfs_client::read(inum ino, size_t size, off_t off, std::string &data) {
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
 
   if (ec->get(ino, buf) != extent_protocol::OK) {
     return IOERR;
@@ -279,7 +266,7 @@ int chfs_client::write(inum ino, size_t size, off_t off, const char *data,
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   if (ec->get(ino, buf) != extent_protocol::OK) {
     ec->abort_tx(txid);
 
@@ -308,12 +295,12 @@ int chfs_client::unlink(inum parent, const char *name) {
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
 
   ec->get(parent, buf);
   auto l = strlen(name);
 
-  for (uint32_t i = 0, len = 0; i < buf.size(); i += len) {
+  for (uint32_t i = 0, len; i < buf.size(); i += len) {
     len = buf[i];
     i += 5;
     std::cout << len << " "
@@ -354,7 +341,7 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
     return EXIST;
   }
 
-  ec->create(extent_protocol::T_LINK, ino_out, txid);
+  ec->create(extent_protocol::T_LINK, txid, ino_out);
   if (ino_out == 0) {
     ec->abort_tx(txid);
 
@@ -364,7 +351,7 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
   std::string l(link);
   ec->put(ino_out, {l.begin(), l.end()}, txid);
 
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
   ec->get(parent, buf);
 
   std::string n(name);
@@ -380,7 +367,7 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
 }
 
 int chfs_client::readlink(chfs_client::inum ino, std::string &data) {
-  auto buf = std::vector<uint8_t>();
+  auto buf = std::string();
 
   if (ec->get(ino, buf) != extent_protocol::OK) {
     return IOERR;

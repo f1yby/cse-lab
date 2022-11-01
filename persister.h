@@ -45,9 +45,9 @@ class chfs_command {
   cmd_type type_ = CMD_BEGIN;
 
   // size | txid | inode | cmd_type | data
-  std::vector<uint8_t> data_;
+  std::string data_;
 
-  std::vector<uint8_t> raw_data_;
+  std::string raw_data_;
 
   uint32_t cursor_ = 0;
 
@@ -63,7 +63,7 @@ class chfs_command {
 
   // constructor
   chfs_command(txid_t txid, cmd_type type, uint32_t inum,
-               const std::vector<uint8_t> &data)
+               const std::string &data)
       : txid_(txid), inum_(inum), type_(type), data_(data) {
     uint32_t size = sizeof(txid) + sizeof(inum) + sizeof(type_) + data.size();
     raw_data_.resize(sizeof(size) + size);
@@ -74,8 +74,7 @@ class chfs_command {
     encode(&type_, sizeof(type_));
     encode(data.data(), data.size());
   }
-  explicit chfs_command(std::vector<uint8_t> raw_data)
-      : raw_data_(std::move(raw_data)) {
+  explicit chfs_command(std::string raw_data) : raw_data_(std::move(raw_data)) {
     uint32_t size = raw_data_.size();
     data_.resize(size - sizeof(txid_) - sizeof(inum_) - sizeof(type_));
 
@@ -85,7 +84,7 @@ class chfs_command {
     decode(&data_[0], data_.size());
   }
 
-  [[nodiscard]] std::vector<uint8_t> into() const { return raw_data_; }
+  [[nodiscard]] std::string into() const { return raw_data_; }
 
   [[nodiscard]] uint64_t size() const { return data_.size(); }
 };
@@ -153,7 +152,7 @@ void persister<command>::append_log(command log) {
     return;
   }
   log_entries.push_back(log);
-  std::vector<uint8_t> raw = log.into();
+  std::string raw = log.into();
   int out = open(file_path_logfile.c_str(), O_WRONLY | O_APPEND);
   if (out < 0) {
     return;
@@ -196,11 +195,16 @@ void persister<command>::checkpoint() {
           }
           break;
         }
+        case chfs_command::CMD_COMMIT:
+        case chfs_command::CMD_ABORT:
+        case chfs_command::CMD_BEGIN:
+        default:
+          break;
       }
     }
   }
 
-  for (int i = 0; i < log_entries.size();) {
+  for (uint32_t i = 0; i < log_entries.size();) {
     if (finished.count(log_entries[i].txid_) != 0) {
       log_entries.erase(log_entries.begin() + i);
     } else {
@@ -234,32 +238,34 @@ void persister<command>::restore_logdata() {
   }
   while (true) {
     uint32_t size;
+
     ssize_t ar = read(in, &size, sizeof(size));
-    if (ar == 0) {
-      break;
-    }
     if (ar == -1 && errno == EINTR) {
       continue;
     }
-    auto raw = std::vector<uint8_t>();
-    raw.resize(size);
+    if (ar != sizeof(size)) {
+      break;
+    }
+
+    auto raw = std::string(size, 0);
+
     ar = read(in, &raw[0], size);
-    if (ar == 0) {
-      std::cout << "in is broken" << std::endl;
-      break;
-    }
     if (ar == -1 && errno == EINTR) {
       continue;
     }
-    command c = command(raw);
-    log_entries.push_back(c);
+    if (ar != size) {
+      break;
+    }
+
+    auto c = command(raw);
+    bin_entries.push_back(c);
     txid_ = std::max(txid_, c.txid_);
   }
   close(in);
   std::cout << __PRETTY_FUNCTION__ << ": restored " << log_entries.size()
             << " log entries from logfile" << std::endl;
   std::cout << __PRETTY_FUNCTION__ << ": set txid to " << txid_ << std::endl;
-};
+}
 
 template <typename command>
 void persister<command>::restore_checkpoint() {
@@ -269,28 +275,31 @@ void persister<command>::restore_checkpoint() {
   }
   while (true) {
     uint32_t size;
+
     ssize_t ar = read(in, &size, sizeof(size));
-    if (ar == 0) {
-      break;
-    }
     if (ar == -1 && errno == EINTR) {
       continue;
     }
-    auto raw = std::vector<uint8_t>();
+    if (ar != sizeof(size)) {
+      break;
+    }
+
+    auto raw = std::string();
     raw.resize(size);
     ar = read(in, &raw[0], size);
-    if (ar == 0) {
-      std::cout << "in is broken" << std::endl;
-      break;
-    }
     if (ar == -1 && errno == EINTR) {
       continue;
     }
-    command c = command(raw);
+    if (ar != size) {
+      break;
+    }
+
+    auto c = command(raw);
     bin_entries.push_back(c);
     txid_ = std::max(txid_, c.txid_);
   }
   close(in);
+
   std::cout << __PRETTY_FUNCTION__ << ": restored " << bin_entries.size()
             << " log entries from checkpoint" << std::endl;
 }
@@ -301,6 +310,6 @@ chfs_command::txid_t persister<command>::get_txid() const {
 template <typename command>
 void persister<command>::start_persist() {
   start = true;
-};
+}
 
 using chfs_persister = persister<chfs_command>;

@@ -21,8 +21,8 @@ class disk {
 
  public:
   disk();
-  void read_block(uint32_t id, uint8_t *buf);
-  void write_block(uint32_t id, const uint8_t *buf);
+  void read_block(uint32_t id, char *buf);
+  void write_block(uint32_t id, const char *buf);
 };
 
 // block layer -----------------------------------------
@@ -46,10 +46,10 @@ class block_manager {
   uint32_t alloc_block_back();
   void occupy_block(uint32_t id);
   void free_block(uint32_t id);
-  void read_block(uint32_t id, uint8_t *buf);
-  void read_block(uint32_t id, uint8_t *buf, uint32_t n);
-  void write_block(uint32_t id, const uint8_t *buf);
-  void write_block(uint32_t id, const uint8_t *buf, uint32_t n);
+  void read_block(uint32_t id, char *buf);
+  void read_block(uint32_t id, char *buf, uint32_t n);
+  void write_block(uint32_t id, const char *buf);
+  void write_block(uint32_t id, const char *buf, uint32_t n);
 };
 
 // inode layer -----------------------------------------
@@ -93,8 +93,8 @@ class inode_manager {
   uint32_t alloc_inode(uint32_t type);
   void occupy_inode(uint32_t inum, uint32_t type);
   void free_inode(uint32_t inum);
-  void read_file(uint32_t inum, uint8_t **buf, uint32_t *size);
-  void write_file(uint32_t inum, const uint8_t *buf, uint32_t size);
+  void read_file(uint32_t inum, char **buf, uint32_t *size);
+  void write_file(uint32_t inum, const char *buf, uint32_t size);
   void remove_file(uint32_t inum);
   void get_attr(uint32_t inum, extent_protocol::attr &a);
 };

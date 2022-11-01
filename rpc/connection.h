@@ -16,7 +16,6 @@ class connection;
 class chanmgr {
  public:
   virtual bool got_pdu(connection *c, char *b, int sz) = 0;
-
   virtual ~chanmgr() {}
 };
 
@@ -24,9 +23,7 @@ class connection : public aio_callback {
  public:
   struct charbuf {
     charbuf() : buf(NULL), sz(0), solong(0) {}
-
     charbuf(char *b, int s) : buf(b), sz(s), solong(0) {}
-
     char *buf;
     int sz;
     int solong;  // amount of bytes written or read so far

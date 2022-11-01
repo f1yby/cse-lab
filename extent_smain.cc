@@ -31,6 +31,9 @@ int main(int argc, char *argv[]) {
   server.reg(extent_protocol::put, &ls, &extent_server::put);
   server.reg(extent_protocol::remove, &ls, &extent_server::remove);
   server.reg(extent_protocol::create, &ls, &extent_server::create);
+  server.reg(extent_protocol::start_tx, &ls, &extent_server::start_tx);
+  server.reg(extent_protocol::abort_tx, &ls, &extent_server::abort_tx);
+  server.reg(extent_protocol::commit_tx, &ls, &extent_server::commit_tx);
 
   while (1) {
     sleep(1000);
