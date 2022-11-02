@@ -39,12 +39,8 @@ class chfs_client {
     chfs_client::inum inum;
   };
 
- private:
-  static std::string filename(inum);
-  static inum n2i(std::string);
-
  public:
-  chfs_client()=delete;
+  chfs_client() = delete;
   chfs_client(std::string, std::string);
 
   bool isfile(inum);
@@ -64,7 +60,8 @@ class chfs_client {
   int mkdir(inum, const char *, mode_t, inum &);
   int symlink(inum, const char *, const char *, inum &);
   int readlink(inum, std::string &);
-  /** you may need to add symbolic link related methods here.*/
+  void acquire(lock_protocol::lockid_t);
+  void release(lock_protocol::lockid_t);
 };
 
 #endif

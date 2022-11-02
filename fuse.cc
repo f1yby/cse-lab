@@ -55,7 +55,7 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
     st.st_ctime = info.ctime;
     st.st_size = info.size;
   } else if (chfs->isdir(inum)) {
-    chfs_client::dirinfo info;
+    chfs_client::dirinfo info{};
     ret = chfs->getdir(inum, info);
     if (ret != chfs_client::OK) {
       return ret;
@@ -99,10 +99,13 @@ chfs_client::status getattr(chfs_client::inum inum, struct stat &st) {
 void fuseserver_getattr(fuse_req_t req, fuse_ino_t ino,
                         struct fuse_file_info *fi) {
   struct stat st;
-  chfs_client::inum inum = ino;  // req->in.h.nodeid;
+  chfs_client::inum inum = ino;
   chfs_client::status ret;
 
+  chfs->acquire(inum);
   ret = getattr(inum, st);
+  chfs->release(inum);
+
   if (ret != chfs_client::OK) {
     fuse_reply_err(req, ENOENT);
     return;
@@ -128,7 +131,11 @@ void fuseserver_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
   if (FUSE_SET_ATTR_SIZE & to_set) {
     struct stat st;
     st.st_size = attr->st_size;
+
+    chfs->acquire(ino);
     chfs->setattr(ino, attr->st_size);
+    chfs->release(ino);
+
     getattr(ino, st);
     fuse_reply_attr(req, &st, 0);
 
@@ -152,10 +159,15 @@ void fuseserver_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                      struct fuse_file_info *fi) {
   auto buf = std::string();
-  if (chfs->read(ino, size, off, buf) != chfs_client::OK) {
+
+  chfs->acquire(ino);
+  auto ret = chfs->read(ino, size, off, buf);
+  chfs->release(ino);
+
+  if (ret != chfs_client::OK) {
     fuse_reply_err(req, EIO);
   } else {
-    fuse_reply_buf(req, &buf[0], buf.size());
+    fuse_reply_buf(req, buf.data(), buf.size());
   }
 }
 
@@ -177,7 +189,12 @@ void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 void fuseserver_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
                       size_t size, off_t off, struct fuse_file_info *fi) {
   auto aw = size_t{};
-  if (chfs->write(ino, size, off, buf, aw) != chfs_client::OK) {
+
+  chfs->acquire(ino);
+  auto ret = chfs->write(ino, size, off, buf, aw);
+  chfs->release(ino);
+
+  if (ret != chfs_client::OK) {
     fuse_reply_err(req, EIO);
   } else {
     fuse_reply_write(req, aw);
@@ -226,11 +243,14 @@ chfs_client::status fuseserver_createhelper(fuse_ino_t parent, const char *name,
 
 void fuseserver_create(fuse_req_t req, fuse_ino_t parent, const char *name,
                        mode_t mode, struct fuse_file_info *fi) {
-  struct fuse_entry_param e;
-  chfs_client::status ret;
-  if ((ret = fuseserver_createhelper(parent, name, mode, &e,
-                                     extent_protocol::T_FILE)) ==
-      chfs_client::OK) {
+  fuse_entry_param e;
+
+  chfs->acquire(parent);
+  auto ret =
+      fuseserver_createhelper(parent, name, mode, &e, extent_protocol::T_FILE);
+  chfs->release(parent);
+
+  if (ret == chfs_client::OK) {
     fuse_reply_create(req, &e, fi);
   } else {
     if (ret == chfs_client::EXIST) {
@@ -243,11 +263,15 @@ void fuseserver_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 
 void fuseserver_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
                       mode_t mode, dev_t rdev) {
-  struct fuse_entry_param e;
-  chfs_client::status ret;
-  if ((ret = fuseserver_createhelper(parent, name, mode, &e,
-                                     extent_protocol::T_FILE)) ==
-      chfs_client::OK) {
+  fuse_entry_param e{};
+
+  chfs->acquire(parent);
+  auto ret =
+      fuseserver_createhelper(parent, name, mode, &e, extent_protocol::T_FILE);
+  chfs->release(parent);
+
+  if (ret == chfs_client::OK) {
+    chfs->release(e.ino);
     fuse_reply_entry(req, &e);
   } else {
     if (ret == chfs_client::EXIST) {
@@ -273,13 +297,22 @@ void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
   bool found = false;
 
   chfs_client::inum ino;
+
+  chfs->acquire(parent);
   chfs->lookup(parent, name, found, ino);
 
   if (found) {
+    chfs->acquire(ino);
+    chfs->release(parent);
+
     e.ino = ino;
     getattr(ino, e.attr);
+    chfs->release(ino);
+
     fuse_reply_entry(req, &e);
   } else {
+    chfs->release(parent);
+
     fuse_reply_err(req, ENOENT);
   }
 }
@@ -323,7 +356,10 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
   chfs_client::inum inum = ino;  // req->in.h.nodeid;
   dirbuf b{};
 
+  chfs->acquire(inum);
   if (!chfs->isdir(inum)) {
+    chfs->release(inum);
+
     fuse_reply_err(req, ENOTDIR);
     return;
   }
@@ -332,6 +368,8 @@ void fuseserver_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 
   std::list<chfs_client::dirent> entries;
   chfs->readdir(inum, entries);
+  chfs->release(inum);
+
   for (auto &entrie : entries) {
     dirbuf_add(&b, entrie.name.c_str(), (fuse_ino_t)entrie.inum);
   }
@@ -357,20 +395,28 @@ void fuseserver_open(fuse_req_t req, fuse_ino_t ino,
 //
 void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
                       mode_t mode) {
-  struct fuse_entry_param e;
+  struct fuse_entry_param e{};
   // In chfs, timeouts are always set to 0.0, and generations are always set to
   // 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
   chfs_client::inum inum;
+
+  chfs->acquire(parent);
   auto ret = chfs->mkdir(parent, name, mode, inum);
   if (ret == chfs_client::OK) {
+    chfs->acquire(inum);
+    chfs->release(parent);
+
     e.ino = inum;
     getattr(inum, e.attr);
-    std::cout << "OK mkdir " << name << std::endl;
+    chfs->release(inum);
+
     fuse_reply_entry(req, &e);
   } else {
+    chfs->release(parent);
+
     fuse_reply_err(req, EEXIST);
   }
 }
@@ -383,11 +429,14 @@ void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
 // Do *not* allow unlinking of a directory.
 //
 void fuseserver_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
-  int r;
-  if ((r = chfs->unlink(parent, name)) == chfs_client::OK) {
+  chfs->acquire(parent);
+  auto ret = chfs->unlink(parent, name);
+  chfs->release(parent);
+
+  if (ret == chfs_client::OK) {
     fuse_reply_err(req, 0);
   } else {
-    if (r == chfs_client::NOENT) {
+    if (ret == chfs_client::NOENT) {
       fuse_reply_err(req, ENOENT);
     } else {
       fuse_reply_err(req, ENOTEMPTY);
@@ -397,35 +446,50 @@ void fuseserver_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
 void fuseserver_readlink(fuse_req_t req, fuse_ino_t ino) {
   auto buf = std::string();
-  if (chfs->readlink(ino, buf) != chfs_client::OK) {
+
+  chfs->acquire(ino);
+  auto ret = chfs->readlink(ino, buf);
+  chfs->release(ino);
+
+  if (ret != chfs_client::OK) {
     fuse_reply_err(req, EIO);
     return;
   } else {
-    fuse_reply_readlink(req, &buf[0]);
+    fuse_reply_readlink(req, buf.c_str());
   }
 }
 
 void fuseserver_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
                         const char *name) {
-  struct fuse_entry_param e;
+  fuse_entry_param e;
   // In chfs, timeouts are always set to 0.0, and generations are always set to
   // 0
   e.attr_timeout = 0.0;
   e.entry_timeout = 0.0;
   e.generation = 0;
   chfs_client::inum inum;
+
+  chfs->acquire(parent);
   auto ret = chfs->symlink(parent, link, name, inum);
   if (ret == chfs_client::OK) {
+    chfs->acquire(inum);
+    chfs->release(parent);
+
     e.ino = inum;
     getattr(inum, e.attr);
+    chfs->release(inum);
+
     fuse_reply_entry(req, &e);
+
   } else {
+    chfs->release(parent);
+
     fuse_reply_err(req, EEXIST);
   }
 }
 
 void fuseserver_statfs(fuse_req_t req) {
-  struct statvfs buf;
+  struct statvfs buf {};
 
   memset(&buf, 0, sizeof(buf));
 

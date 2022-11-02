@@ -13,24 +13,17 @@ chfs_client::chfs_client(std::string extent_dst, std::string lock_dst) {
   chfs_command::txid_t txid;
   ec->start_tx(txid);
 
+  acquire(1);
   if (ec->put(1, {}, txid) != extent_protocol::OK) {
+    release(1);
+
     ec->abort_tx(txid);
     return;
+  } else {
+    release(1);
+
+    ec->commit_tx(txid);
   }
-
-  ec->commit_tx(txid);
-}
-chfs_client::inum chfs_client::n2i(std::string n) {
-  std::istringstream ist(n);
-  unsigned long long finum;
-  ist >> finum;
-  return finum;
-}
-
-std::string chfs_client::filename(inum inum) {
-  std::ostringstream ost;
-  ost << inum;
-  return ost.str();
 }
 
 bool chfs_client::isfile(inum inum) {
@@ -42,8 +35,9 @@ bool chfs_client::isfile(inum inum) {
 
   if (a.type == extent_protocol::T_FILE) {
     return true;
+  } else {
+    return false;
   }
-  return false;
 }
 /** Your code here for Lab...
  * You may need to add routines such as
@@ -59,8 +53,9 @@ bool chfs_client::isdir(inum inum) {
 
   if (a.type == extent_protocol::T_DIR) {
     return true;
+  } else {
+    return false;
   }
-  return false;
 }
 
 bool chfs_client::issymlink(inum inum) {
@@ -71,9 +66,9 @@ bool chfs_client::issymlink(inum inum) {
 
   if (a.type == extent_protocol::T_LINK) {
     return true;
+  } else {
+    return false;
   }
-
-  return false;
 }
 
 int chfs_client::getfile(inum inum, fileinfo &fin) {
@@ -100,15 +95,6 @@ int chfs_client::getdir(inum inum, dirinfo &din) {
   din.ctime = a.ctime;
   return OK;
 }
-
-#define EXT_RPC(xx)                                          \
-  do {                                                       \
-    if ((xx) != extent_protocol::OK) {                       \
-      printf("EXT_RPC Error: %s:%d \n", __FILE__, __LINE__); \
-      r = IOERR;                                             \
-      goto release;                                          \
-    }                                                        \
-  } while (0)
 
 // Only support set size of attr
 int chfs_client::setattr(inum ino, size_t size) {
@@ -367,12 +353,11 @@ int chfs_client::symlink(chfs_client::inum parent, const char *link,
 }
 
 int chfs_client::readlink(chfs_client::inum ino, std::string &data) {
-  auto buf = std::string();
-
-  if (ec->get(ino, buf) != extent_protocol::OK) {
+  if (ec->get(ino, data) != extent_protocol::OK) {
     return IOERR;
   }
-  data = std::string(buf.begin(), buf.end());
-  data.push_back(0);
   return OK;
 }
+
+void chfs_client::acquire(lock_protocol::lockid_t l) { lc->acquire(l); }
+void chfs_client::release(lock_protocol::lockid_t l) { lc->release(l); }

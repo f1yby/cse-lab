@@ -19,11 +19,7 @@ void disk::write_block(blockid_t id, const char *buf) {
 
 // Allocate a free disk block.
 blockid_t block_manager::alloc_block() {
-  /*
-   * your code goes here.
-   * note: you should mark the corresponding bit in block bitmap when alloc.
-   * you need to think about which block you can start to be allocated.
-   */
+  std::unique_lock<std::mutex> l(m_);
   auto buf = static_cast<char *>(malloc(BLOCK_SIZE));
   auto id = 0;
   auto bb = 0;
@@ -45,11 +41,7 @@ blockid_t block_manager::alloc_block() {
 }
 
 blockid_t block_manager::alloc_block_back() {
-  /*
-   * your code goes here.
-   * note: you should mark the corresponding bit in block bitmap when alloc.
-   * you need to think about which block you can start to be allocated.
-   */
+  std::unique_lock<std::mutex> l(m_);
   auto buf = static_cast<char *>(malloc(BLOCK_SIZE));
   auto id = BLOCK_NUM - 1;
   auto bb = 0;
@@ -71,11 +63,7 @@ blockid_t block_manager::alloc_block_back() {
 }
 
 void block_manager::free_block(uint32_t id) {
-  /*
-   * your code goes here.
-   * note: you should unmark the corresponding bit in the block bitmap when
-   * free.
-   */
+  std::unique_lock<std::mutex> l(m_);
   auto buf = static_cast<char *>(malloc(BLOCK_SIZE));
   auto bb = BBLOCK(id);
   read_block(bb, buf);
@@ -136,6 +124,7 @@ void block_manager::write_block(uint32_t id, const char *buf, uint32_t n) {
 }
 
 void block_manager::occupy_block(uint32_t id) {
+  std::unique_lock<std::mutex> l(m_);
   auto buf = static_cast<char *>(malloc(BLOCK_SIZE));
   auto bb = BBLOCK(id);
   read_block(bb, buf);

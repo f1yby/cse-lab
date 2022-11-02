@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+#include <mutex>
+
 #include "extent_protocol.h"
 
 #define DISK_SIZE (1024 * 1024 * 16)
@@ -36,7 +38,7 @@ typedef struct superblock {
 class block_manager {
  private:
   disk *d;
-  std::map<uint32_t, int> using_blocks;
+  std::mutex m_;
 
  public:
   block_manager();
