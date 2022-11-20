@@ -1,0 +1,9 @@
+.vscode/
+chfs1/
+log/
+*.o
+*.d
+*.log
+.cache
+/.idea/workspace.xml
+/compile_commands.json

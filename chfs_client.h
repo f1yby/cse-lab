@@ -2,17 +2,23 @@
 #define chfs_client_h
 
 #include <string>
-//#include "chfs_protocol.h"
-#include "extent_client.h"
+// #include "chfs_protocol.h"
 #include <vector>
 
+#include "extent_client.h"
 
 class chfs_client {
   extent_client *ec;
- public:
 
+ public:
   typedef unsigned long long inum;
-  enum xxstatus { OK, RPCERR, NOENT, IOERR, EXIST };
+  enum xxstatus {
+    OK,
+    RPCERR,
+    NOENT,  // No such file or directory
+    IOERR,
+    EXIST
+  };
   typedef int status;
 
   struct fileinfo {
@@ -31,16 +37,13 @@ class chfs_client {
     chfs_client::inum inum;
   };
 
- private:
-  static std::string filename(inum);
-  static inum n2i(std::string);
-
  public:
-  chfs_client();
+  chfs_client() = delete;
   chfs_client(std::string, std::string);
 
   bool isfile(inum);
   bool isdir(inum);
+  bool issymlink(inum);
 
   int getfile(inum, fileinfo &);
   int getdir(inum, dirinfo &);
@@ -51,10 +54,10 @@ class chfs_client {
   int readdir(inum, std::list<dirent> &);
   int write(inum, size_t, off_t, const char *, size_t &);
   int read(inum, size_t, off_t, std::string &);
-  int unlink(inum,const char *);
-  int mkdir(inum , const char *, mode_t , inum &);
-  
-  /** you may need to add symbolic link related methods here.*/
+  int unlink(inum, const char *);
+  int mkdir(inum, const char *, mode_t, inum &);
+  int symlink(inum, const char *, const char *, inum &);
+  int readlink(inum, std::string &);
 };
 
-#endif 
+#endif
