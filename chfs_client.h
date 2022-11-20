@@ -2,7 +2,6 @@
 #define chfs_client_h
 
 #include <string>
-// #include "chfs_protocol.h"
 #include <vector>
 
 #include "extent_client.h"
@@ -36,10 +35,16 @@ class chfs_client {
     std::string name;
     chfs_client::inum inum;
   };
+  struct syminfo {
+    std::string slink;
+    unsigned long long size;
+    unsigned long atime;
+    unsigned long mtime;
+    unsigned long ctime;
+  };
 
  public:
-  chfs_client() = delete;
-  chfs_client(std::string, std::string);
+  chfs_client(std::string);
 
   bool isfile(inum);
   bool isdir(inum);
@@ -47,6 +52,7 @@ class chfs_client {
 
   int getfile(inum, fileinfo &);
   int getdir(inum, dirinfo &);
+  int getsymlink(inum, syminfo&);//TODO ?
 
   int setattr(inum, size_t);
   int lookup(inum, const char *, bool &, inum &);
@@ -60,4 +66,4 @@ class chfs_client {
   int readlink(inum, std::string &);
 };
 
-#endif
+#endif 

@@ -6,9 +6,6 @@
  * high-level interface only gives us complete paths.
  */
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <fuse_lowlevel.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -157,7 +154,6 @@ void fuseserver_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
   auto buf = std::string();
 
   auto ret = chfs->read(ino, size, off, buf);
-
   if (ret != chfs_client::OK) {
     fuse_reply_err(req, EIO);
   } else {
@@ -299,7 +295,6 @@ void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     fuse_reply_err(req, ENOENT);
   }
 }
-
 struct dirbuf {
   char *p;
   size_t size;
@@ -386,13 +381,11 @@ void fuseserver_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
   if (ret == chfs_client::OK) {
     e.ino = inum;
     getattr(inum, e.attr);
-
     fuse_reply_entry(req, &e);
   } else {
     fuse_reply_err(req, EEXIST);
   }
 }
-
 //
 // Remove the file named @name from directory @parent.
 // Free the file's extent.
@@ -469,19 +462,24 @@ int main(int argc, char *argv[]) {
 
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  if (argc != 4) {
-    fprintf(stderr,
-            "Usage: chfs_client <mountpoint> <port-extent-server> "
-            "<port-lock-server>\n");
+#if 1
+  if (argc != 3) {
+    fprintf(stderr, "Usage: chfs_client <mountpoint> <port-extent-server>\n");
     exit(1);
   }
+#else
+  if (argc != 2) {
+    fprintf(stderr, "Usage: chfs_client <mountpoint>\n");
+    exit(1);
+  }
+#endif
   mountpoint = argv[1];
 
   srandom(getpid());
 
   myid = random();
 
-  chfs = new chfs_client(argv[2], argv[3]);
+  chfs = new chfs_client(argv[2]);
   // chfs = new chfs_client();
 
   fuseserver_oper.getattr = fuseserver_getattr;
