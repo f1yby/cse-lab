@@ -52,7 +52,7 @@ class chfs_client {
 
   int getfile(inum, fileinfo &);
   int getdir(inum, dirinfo &);
-  int getsymlink(inum, syminfo&);//TODO ?
+  int getsymlink(inum, syminfo &);  // TODO ?
 
   int setattr(inum, size_t);
   int lookup(inum, const char *, bool &, inum &);
@@ -66,4 +66,4 @@ class chfs_client {
   int readlink(inum, std::string &);
 };
 
-#endif 
+#endif
