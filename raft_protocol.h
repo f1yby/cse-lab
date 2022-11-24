@@ -16,8 +16,8 @@ class request_vote_args {
  public:
   int term_;
   int candidate_id_;
-  int last_log_index_;
-  int last_log_term_;
+  int current_commit_index;
+  int current_commit_term;
 };
 
 marshall &operator<<(marshall &m, const request_vote_args &args);
@@ -57,10 +57,10 @@ class append_entries_args {
  public:
   int term_;
   int leader_id_;
-  int prev_log_index_;
-  int prev_log_term_;
+  int last_commit_index_;
+  int current_commit_index_;
+  int current_commit_term_;
   log_entry<command> entries_;
-  int leader_commit_;
 };
 
 template <typename command>
@@ -68,10 +68,10 @@ marshall &operator<<(marshall &m, const append_entries_args<command> &args) {
   // Lab3: Your code here
   m << args.term_;
   m << args.leader_id_;
-  m << args.prev_log_index_;
-  m << args.prev_log_term_;
+  m << args.last_commit_index_;
+  m << args.current_commit_index_;
+  m << args.current_commit_term_;
   m << args.entries_;
-  m << args.leader_commit_;
   return m;
 }
 
@@ -79,17 +79,17 @@ template <typename command>
 unmarshall &operator>>(unmarshall &u, append_entries_args<command> &args) {
   u >> args.term_;
   u >> args.leader_id_;
-  u >> args.prev_log_index_;
-  u >> args.prev_log_term_;
+  u >> args.last_commit_index_;
+  u >> args.current_commit_index_;
+  u >> args.current_commit_term_;
   u >> args.entries_;
-  u >> args.leader_commit_;
   return u;
 }
 
 class append_entries_reply {
  public:
-  int term_{};
-  int success_{};
+  int term_;
+  int success_;
 };
 
 marshall &operator<<(marshall &m, const append_entries_reply &reply);

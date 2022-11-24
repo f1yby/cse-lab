@@ -3,15 +3,15 @@
 marshall &operator<<(marshall &m, const request_vote_args &args) {
   m << args.term_;
   m << args.candidate_id_;
-  m << args.last_log_index_;
-  m << args.last_log_term_;
+  m << args.current_commit_index;
+  m << args.current_commit_term;
   return m;
 }
 unmarshall &operator>>(unmarshall &u, request_vote_args &args) {
   u >> args.term_;
   u >> args.candidate_id_;
-  u >> args.last_log_index_;
-  u >> args.last_log_term_;
+  u >> args.current_commit_index;
+  u >> args.current_commit_term;
   return u;
 }
 
@@ -28,12 +28,14 @@ unmarshall &operator>>(unmarshall &u, request_vote_reply &reply) {
 }
 
 marshall &operator<<(marshall &m, const append_entries_reply &args) {
-  // Lab3: Your code here
+  m << args.term_;
+  m << args.success_;
   return m;
 }
 
 unmarshall &operator>>(unmarshall &m, append_entries_reply &args) {
-  // Lab3: Your code here
+  m >> args.term_;
+  m >> args.success_;
   return m;
 }
 

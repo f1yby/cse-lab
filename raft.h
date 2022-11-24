@@ -96,24 +96,26 @@ class raft {
   raft_role role = follower;
   int current_term = 0;
 
-  ///@if node has leader,leader id is positive and equals leader's id
-  ///@else leader id is -1
+  ///@note If node has leader,leader id is positive and equals leader's id, else
+  /// leader id is -1
   int leader_id = -1;
 
-  ///@if node has voted for other node in current term, vote for equals to voted
-  /// node's id
-  ///@else vote for is -1
+  ///@note If node has voted for other node in current term, vote for equals to
+  /// voted node's id, else vote for is -1
   int vote_for = -1;
-  int leader_commit = 0;
+  int current_commit_index = 0;
+  int last_commit_index = 0;
+  int current_commit_term = 0;
 
   /* ---- Volatile state on all server----  */
-  int prev_log_term = 0;
-  int prev_log_index = 0;
   std::set<int> vote_for_me{};
   std::chrono::time_point<std::chrono::system_clock> last_seen_leader =
       std::chrono::system_clock::now();
+  std::vector<command> entries{{}};
 
   /* ---- Volatile state on leader----  */
+  std::set<int> commit_success;
+  std::set<int> need_snapshot;
 
  private:
   // RPC handlers
@@ -248,8 +250,16 @@ void raft<state_machine, command>::start() {
 template <typename state_machine, typename command>
 bool raft<state_machine, command>::new_command(command cmd, int &term,
                                                int &index) {
-  // Lab3: Your code here
+  std::unique_lock<std::mutex> l(mtx);
+  if (role != leader) {
+    return false;
+  }
   term = current_term;
+
+  index = storage->size() + entries.size();
+  entries.push_back(cmd);
+  RAFT_LOG("receive new command");
+
   return true;
 }
 
@@ -271,8 +281,8 @@ int raft<state_machine, command>::request_vote(request_vote_args args,
   check_term(args.term_);
 
   // Hard Reject
-  if (args.last_log_term_ < prev_log_term ||
-      args.last_log_index_ < prev_log_index || leader_id != -1 ||
+  if (args.current_commit_term < current_commit_term ||
+      args.current_commit_index < current_commit_index || leader_id != -1 ||
       args.term_ < current_term) {
     reply = request_vote_reply{.term_ = current_term, .vote_granted_ = -2};
     return 0;
@@ -285,7 +295,7 @@ int raft<state_machine, command>::request_vote(request_vote_args args,
   }
 
   vote_for = args.candidate_id_;
-  reply = request_vote_reply{.term_ = current_term, .vote_granted_ = vote_for};
+  reply = request_vote_reply{current_term, vote_for};
   RAFT_LOG("grant vote to %d", args.candidate_id_);
   return 0;
 }
@@ -334,9 +344,10 @@ template <typename state_machine, typename command>
 int raft<state_machine, command>::append_entries(
     append_entries_args<command> arg, append_entries_reply &reply) {
   std::unique_lock<std::mutex> l(mtx);
+  check_term(arg.term_);
+
   last_seen_leader = std::chrono::system_clock::now();
 
-  check_term(arg.term_);
   // Sender is out-dated
   if (arg.term_ < current_term) {
     RAFT_LOG("sender is outdated");
@@ -346,38 +357,122 @@ int raft<state_machine, command>::append_entries(
   }
 
   // Receiver is kicked back into follower
-  if (role == candidate && arg.term_ == current_term) {
-    // TODO sync data
+  if (role == candidate) {
     role = follower;
     leader_id = arg.leader_id_;
   }
 
-  // Data is not up-to-date
-  if (arg.prev_log_term_ != prev_log_term ||
-      arg.prev_log_index_ != prev_log_index) {
+  // FIXME: it's actually snapshot
+  if (arg.current_commit_index_ == -1) {
+    RAFT_LOG("install snapshot %d", arg.last_commit_index_);
+    entries = arg.entries_.entries_;
+    for (int i = last_commit_index + 1; i <= arg.last_commit_index_; ++i) {
+      state->apply_log(entries[i - storage->size()]);
+    }
+
+    current_commit_index = arg.last_commit_index_;
+    current_term = arg.current_commit_term_;
+    last_commit_index = arg.last_commit_index_;
+    reply.term_ = current_term;
+    reply.success_ = true;
+    return 0;
+  }
+
+  // Data are outdated
+  ///@note leader always has the newest committed log
+  if (arg.last_commit_index_ > last_commit_index &&
+      (arg.current_commit_index_ != current_commit_index ||
+       arg.current_commit_term_ != current_commit_term)) {
+    RAFT_LOG("data is outdated");
     reply.term_ = current_term;
     reply.success_ = false;
     return 0;
   }
 
-  // TODO
-  //  Data is up-to-dated, do append
+  // Commits are up-to-date
+  if (arg.current_commit_index_ == current_commit_index &&
+      arg.current_commit_term_ == current_commit_term) {
+    // Try Apply
+    if (arg.last_commit_index_ > last_commit_index) {
+      for (int i = last_commit_index + 1; i <= arg.last_commit_index_; ++i) {
+        state->apply_log(entries[i - storage->size()]);
+      }
+      last_commit_index = arg.last_commit_index_;
+      // TODO do persistence
 
+      RAFT_LOG("apply: %d -> %d", last_commit_index, arg.last_commit_index_);
+    }
+
+    reply.term_ = current_term;
+    reply.success_ = true;
+    return 0;
+  }
+
+  // Update Commit (last_commit - arg.last_commit)
+  if (last_commit_index == arg.last_commit_index_) {
+    if (arg.current_commit_index_ >= entries.size()) {
+      entries.resize(arg.current_commit_index_ + 1);
+    }
+
+    for (int i = last_commit_index + 1; i <= arg.current_commit_index_; ++i) {
+      entries[i - storage->size()] =
+          arg.entries_.entries_[i - (last_commit_index + 1)];
+    }
+
+    // TODO do persistence
+    RAFT_LOG("commit: %d -> %d", current_commit_index,
+             arg.current_commit_index_);
+    current_commit_index = arg.current_commit_index_;
+
+    reply.term_ = current_term;
+    reply.success_ = true;
+
+    return 0;
+  }
+
+  assert(false);
   return 0;
 }
 
 template <typename state_machine, typename command>
 void raft<state_machine, command>::handle_append_entries_reply(
-    int node, const append_entries_args<command> &arg,
+    int target, const append_entries_args<command> &arg,
     const append_entries_reply &reply) {
   std::unique_lock<std::mutex> l(mtx);
-  check_term(arg.term_);
+  check_term(reply.term_);
 
-  if (reply.success_) {
+  // Reply from previous term, ignore
+  if (reply.term_ < current_term) {
+    RAFT_LOG("reply from previous term %d", reply.term_);
     return;
   }
 
-  // TODO handle reply fail
+  if (reply.success_ == false) {
+    RAFT_LOG("%d need snapshot", target);
+    // FIXME Do real snapshot
+    need_snapshot.insert(target);
+
+    return;
+  }
+
+  if (arg.current_commit_index_ == current_commit_index) {
+    commit_success.insert(target);
+  }
+
+  if (commit_success.size() > rpc_clients.size() / 2) {
+    commit_success.clear();
+    if (last_commit_index == current_commit_index) {
+      current_commit_index = entries.size() + storage->size() - 1;
+    } else {
+      for (auto i = last_commit_index + 1; i <= current_commit_index; ++i) {
+        state->apply_log(entries[i - storage->size()]);
+      }
+      last_commit_index = current_commit_index;
+    }
+    RAFT_LOG("start new commit %d : %d", last_commit_index,
+             current_commit_index);
+    // TODO persist on disk
+  }
 }
 
 template <typename state_machine, typename command>
@@ -441,7 +536,7 @@ template <typename state_machine, typename command>
 void raft<state_machine, command>::run_background_election() {
   while (true) {
     std::this_thread::sleep_for(
-        std::chrono::milliseconds(97 * my_id % 100 + 100));
+        std::chrono::milliseconds(97 * my_id % 200 + 200));
     if (is_stopped()) {
       return;
     }
@@ -451,7 +546,7 @@ void raft<state_machine, command>::run_background_election() {
     // Follower becomes a candidate
     if (std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - last_seen_leader)
-            .count() > 300) {
+            .count() > 1000) {
       RAFT_LOG("timeout start new vote")
       role = candidate;
 
@@ -462,10 +557,10 @@ void raft<state_machine, command>::run_background_election() {
       vote_for = my_id;
 
       auto args = request_vote_args{
-          .term_ = current_term,
-          .candidate_id_ = my_id,
-          .last_log_index_ = prev_log_index,
-          .last_log_term_ = prev_log_term,
+          current_term,
+          my_id,
+          current_commit_index,
+          current_commit_term,
       };
       for (auto target = 0; target < rpc_clients.size(); ++target) {
         thread_pool->template addObjJob(this, &raft::send_request_vote, target,
@@ -477,55 +572,75 @@ void raft<state_machine, command>::run_background_election() {
 
 template <typename state_machine, typename command>
 void raft<state_machine, command>::run_background_commit() {
-  //  while (true) {
-  //    if (is_stopped()) return;
-  //    // std::unique_lock<std::mutex> l(mtx);
-  //
-  //    if (role != leader) {
-  //      continue;
-  //    }
-  //    // TODO
-  //  }
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    if (is_stopped()) return;
+    std::unique_lock<std::mutex> l(mtx);
+
+    // Only leader can commit
+    if (role != leader) {
+      continue;
+    }
+
+    auto args = append_entries_args<command>{
+        current_term,
+        my_id,
+        last_commit_index,
+        current_commit_index,
+        current_commit_term,
+        {{entries.begin() + last_commit_index - storage->size() + 1,
+          entries.end()}},
+    };
+
+    auto snapshot_args = append_entries_args<command>{
+        current_term,        my_id,     last_commit_index, -1,
+        current_commit_term, {entries},
+    };
+
+    for (auto target = 0; target < rpc_clients.size(); ++target) {
+      // FIXME it's actually snapshot
+      if (need_snapshot.count(target)) {
+        thread_pool->addObjJob(this, &raft::send_append_entries, target,
+                               snapshot_args);
+        need_snapshot.erase(target);
+        continue;
+      }
+
+      thread_pool->addObjJob(this, &raft::send_append_entries, target, args);
+    }
+  }
 }
 
 template <typename state_machine, typename command>
 void raft<state_machine, command>::run_background_apply() {
-  //  while (true) {
   //    if (is_stopped()) return;
   //    // Lab3: Your code here:
   //    // TODO
+  //  }
   //  }
 }
 
 template <typename state_machine, typename command>
 void raft<state_machine, command>::run_background_ping() {
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    if (is_stopped()) {
-      return;
-    }
-
-    std::unique_lock<std::mutex> l(mtx);
-    if (role != leader) {
-      continue;
-    }
-    auto args = append_entries_args<command>{
-        .term_ = current_term,
-        .leader_id_ = my_id,
-        .prev_log_index_ = prev_log_index,
-        .prev_log_term_ = prev_log_term,
-        .entries_ =
-            log_entry<command>{
-                .entries_ = {},
-            },
-        .leader_commit_ = leader_commit,
-    };
-    for (auto target = 0; target < rpc_clients.size(); ++target) {
-      thread_pool->template addObjJob(this, &raft::send_append_entries, target,
-                                      args);
-    }
-    RAFT_LOG("send heart beat");
-  }
+  //  while (true) {
+  //    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  //    if (is_stopped()) {
+  //      return;
+  //    }
+  //
+  //    std::unique_lock<std::mutex> l(mtx);
+  //    if (role != leader) {
+  //      continue;
+  //    }
+  //    auto args = append_entries_args<command>{
+  //        current_term, my_id, last_commit_index, current_commit_index, {},
+  //    };
+  //    for (auto target = 0; target < rpc_clients.size(); ++target) {
+  //      thread_pool->template addObjJob(this, &raft::send_append_entries,
+  //      target,
+  //                                      args);
+  //    }
+  //  }
 }
 
 template <typename state_machine, typename command>
@@ -541,6 +656,7 @@ void raft<state_machine, command>::init_new_term() {
   vote_for_me.clear();
   leader_id = -1;
   role = follower;
+  commit_success.clear();
 }
 
 /******************************************************************

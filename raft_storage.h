@@ -14,6 +14,13 @@ class raft_storage {
   ~raft_storage();
   // Lab3: Your code here
 
+  //  void append(command );
+  //  void truncate(int);
+  int size() {
+    // TODO read from meta file
+    return 0;
+  }
+
  private:
   std::mutex mtx;
   // Lab3: Your code here
