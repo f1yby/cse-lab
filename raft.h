@@ -103,15 +103,17 @@ class raft {
   ///@note If node has voted for other node in current term, vote for equals to
   /// voted node's id, else vote for is -1
   int vote_for = -1;
-  int current_commit_index = 0;
-  int last_commit_index = 0;
-  int current_commit_term = 0;
+  int weak_commit_size = 0;
+  int strong_commit_size = 0;
+  int weak_commit_term = 0;
+
+  int committed_in_memory;
 
   /* ---- Volatile state on all server----  */
   std::set<int> vote_for_me{};
   std::chrono::time_point<std::chrono::system_clock> last_seen_leader =
       std::chrono::system_clock::now();
-  std::vector<command> entries{{}};
+  std::vector<command> entries{};
 
   /* ---- Volatile state on leader----  */
   std::set<int> commit_success;
@@ -196,6 +198,40 @@ raft<state_machine, command>::raft(rpcs *server, std::vector<rpcc *> clients,
 
   // Your code here:
   // Do the initialization
+
+  // Reload data
+  if (storage->valid) {
+    role = (raft_role)storage->role;
+    current_term = storage->current_term;
+    leader_id = storage->leader_id;
+    vote_for = storage->vote_for;
+    weak_commit_size = storage->weak_commit_size;
+    strong_commit_size = storage->strong_commit_size;
+    weak_commit_term = storage->weak_commit_term;
+    entries = storage->weak;
+    // FIXME
+    committed_in_memory = strong_commit_size;
+    for (int i = 0; i < strong_commit_size; ++i) {
+      state->apply_log(entries[i]);
+    }
+
+  } else {
+    storage->role = role;
+    storage->current_term = current_term;
+    storage->leader_id = leader_id;
+    storage->vote_for = vote_for;
+    storage->weak_commit_size = weak_commit_size;
+    storage->strong_commit_size = strong_commit_size;
+    storage->weak_commit_term = weak_commit_term;
+    storage->last_commit_size = 0;
+    storage->flush_metadata();
+  }
+
+  // FIXME
+  //   entries.push_back(command{});
+  //   committed_in_memory = 1;
+  committed_in_memory = strong_commit_size;
+
   RAFT_LOG("init");
 }
 
@@ -256,9 +292,11 @@ bool raft<state_machine, command>::new_command(command cmd, int &term,
   }
   term = current_term;
 
-  index = storage->size() + entries.size();
   entries.push_back(cmd);
-  RAFT_LOG("receive new command");
+  // FIXME
+  storage->sync_log(entries);
+  index = entries.size() - committed_in_memory + strong_commit_size;
+  RAFT_LOG("receive new %d", index);
 
   return true;
 }
@@ -281,19 +319,21 @@ int raft<state_machine, command>::request_vote(request_vote_args args,
   check_term(args.term_);
 
   // Hard Reject
-  if (args.current_commit_term < current_commit_term ||
-      args.current_commit_index < current_commit_index || leader_id != -1 ||
+  if (args.weak_commit_term < weak_commit_term ||
+      args.weak_commit_size < weak_commit_size || leader_id != -1 ||
       args.term_ < current_term) {
-    reply = request_vote_reply{.term_ = current_term, .vote_granted_ = -2};
+    reply = request_vote_reply{current_term, -2};
     return 0;
   }
 
   // Soft Reject
   if ((vote_for != args.candidate_id_ && vote_for != -1)) {
-    reply = request_vote_reply{.term_ = current_term, .vote_granted_ = -1};
+    reply = request_vote_reply{current_term, -1};
     return 0;
   }
 
+  storage->vote_for = vote_for;
+  storage->flush_metadata();
   vote_for = args.candidate_id_;
   reply = request_vote_reply{current_term, vote_for};
   RAFT_LOG("grant vote to %d", args.candidate_id_);
@@ -314,6 +354,8 @@ void raft<state_machine, command>::handle_request_vote_reply(
 
   // Hard reject
   if (reply.vote_granted_ == -2) {
+    storage->role = follower;
+    storage->flush_metadata();
     role = follower;
     vote_for_me.clear();
     return;
@@ -333,6 +375,8 @@ void raft<state_machine, command>::handle_request_vote_reply(
 
   if (vote_for_me.size() > rpc_clients.size() / 2) {
     // Got majority votes, become the leader
+    storage->role = leader;
+    storage->flush_metadata();
     role = leader;
     RAFT_LOG("become leader")
     vote_for_me.clear();
@@ -358,21 +402,40 @@ int raft<state_machine, command>::append_entries(
 
   // Receiver is kicked back into follower
   if (role == candidate) {
+    storage->role = follower;
+    storage->leader_id = arg.leader_id_;
+    storage->flush_metadata();
     role = follower;
     leader_id = arg.leader_id_;
   }
 
   // FIXME: it's actually snapshot
-  if (arg.current_commit_index_ == -1) {
-    RAFT_LOG("install snapshot %d", arg.last_commit_index_);
+  if (arg.weak_commit_size == -1) {
+    RAFT_LOG("install snapshot %d", arg.strong_commit_size);
     entries = arg.entries_.entries_;
-    for (int i = last_commit_index + 1; i <= arg.last_commit_index_; ++i) {
-      state->apply_log(entries[i - storage->size()]);
+    // FIXME
+    committed_in_memory = strong_commit_size;
+    //    storage->clear_weak_commit();
+    // FIXME
+    storage->sync_log(entries);
+    for (int i = strong_commit_size; i < entries.size(); ++i) {
+      //      storage->append_weak(entries[i]);
+    }
+    for (int i = strong_commit_size; i < arg.strong_commit_size; ++i) {
+      state->apply_log(entries[i]);
+      //      storage->convert_to_commit(entries[i]);
     }
 
-    current_commit_index = arg.last_commit_index_;
-    current_term = arg.current_commit_term_;
-    last_commit_index = arg.last_commit_index_;
+    committed_in_memory += arg.strong_commit_size - strong_commit_size;
+
+    storage->weak_commit_size = arg.weak_commit_size;
+    storage->weak_commit_term = arg.weak_commit_term;
+    storage->strong_commit_size = arg.strong_commit_size;
+    storage->flush_metadata();
+    weak_commit_size = arg.strong_commit_size;
+    current_term = arg.weak_commit_term;
+    strong_commit_size = arg.strong_commit_size;
+
     reply.term_ = current_term;
     reply.success_ = true;
     return 0;
@@ -380,9 +443,9 @@ int raft<state_machine, command>::append_entries(
 
   // Data are outdated
   ///@note leader always has the newest committed log
-  if (arg.last_commit_index_ > last_commit_index &&
-      (arg.current_commit_index_ != current_commit_index ||
-       arg.current_commit_term_ != current_commit_term)) {
+  if (arg.strong_commit_size > strong_commit_size &&
+      (arg.weak_commit_size != weak_commit_size ||
+       arg.weak_commit_term != weak_commit_term)) {
     RAFT_LOG("data is outdated");
     reply.term_ = current_term;
     reply.success_ = false;
@@ -390,17 +453,23 @@ int raft<state_machine, command>::append_entries(
   }
 
   // Commits are up-to-date
-  if (arg.current_commit_index_ == current_commit_index &&
-      arg.current_commit_term_ == current_commit_term) {
+  if (arg.weak_commit_size == weak_commit_size &&
+      arg.weak_commit_term == weak_commit_term) {
     // Try Apply
-    if (arg.last_commit_index_ > last_commit_index) {
-      for (int i = last_commit_index + 1; i <= arg.last_commit_index_; ++i) {
-        state->apply_log(entries[i - storage->size()]);
+    if (arg.strong_commit_size > strong_commit_size) {
+      for (int i = 0; i < arg.strong_commit_size - strong_commit_size; ++i) {
+        //        storage->convert_to_commit(entries[i + committed_in_memory]);
+        state->apply_log(entries[i + committed_in_memory]);
       }
-      last_commit_index = arg.last_commit_index_;
+
+      storage->strong_commit_size = arg.strong_commit_size;
+      storage->sync_log(entries);
+      storage->flush_metadata();
+      committed_in_memory += arg.strong_commit_size - strong_commit_size;
+      strong_commit_size = arg.strong_commit_size;
       // TODO do persistence
 
-      RAFT_LOG("apply: %d -> %d", last_commit_index, arg.last_commit_index_);
+      RAFT_LOG("apply: %d -> %d", strong_commit_size, arg.strong_commit_size);
     }
 
     reply.term_ = current_term;
@@ -408,21 +477,28 @@ int raft<state_machine, command>::append_entries(
     return 0;
   }
 
-  // Update Commit (last_commit - arg.last_commit)
-  if (last_commit_index == arg.last_commit_index_) {
-    if (arg.current_commit_index_ >= entries.size()) {
-      entries.resize(arg.current_commit_index_ + 1);
+  // Update Commit
+  if (strong_commit_size == arg.strong_commit_size) {
+    if (arg.entries_.entries_.size() > entries.size() - committed_in_memory) {
+      entries.resize(arg.entries_.entries_.size() + committed_in_memory);
     }
 
-    for (int i = last_commit_index + 1; i <= arg.current_commit_index_; ++i) {
-      entries[i - storage->size()] =
-          arg.entries_.entries_[i - (last_commit_index + 1)];
+    for (int i = committed_in_memory, j = 0; j < arg.entries_.entries_.size();
+         ++i, ++j) {
+      entries[i] = arg.entries_.entries_[j];
+    }
+
+    // FIXME
+    storage->sync_log(entries);
+    for (int i = 0; i < arg.weak_commit_size - strong_commit_size; ++i) {
+      //      storage->append_weak(entries[i + committed_in_memory]);
     }
 
     // TODO do persistence
-    RAFT_LOG("commit: %d -> %d", current_commit_index,
-             arg.current_commit_index_);
-    current_commit_index = arg.current_commit_index_;
+    RAFT_LOG("commit: %d -> %d", weak_commit_size, arg.weak_commit_size);
+    storage->weak_commit_size = arg.weak_commit_size;
+    storage->flush_metadata();
+    weak_commit_size = arg.weak_commit_size;
 
     reply.term_ = current_term;
     reply.success_ = true;
@@ -455,23 +531,40 @@ void raft<state_machine, command>::handle_append_entries_reply(
     return;
   }
 
-  if (arg.current_commit_index_ == current_commit_index) {
+  if (arg.weak_commit_size == weak_commit_size) {
     commit_success.insert(target);
   }
 
   if (commit_success.size() > rpc_clients.size() / 2) {
     commit_success.clear();
-    if (last_commit_index == current_commit_index) {
-      current_commit_index = entries.size() + storage->size() - 1;
-    } else {
-      for (auto i = last_commit_index + 1; i <= current_commit_index; ++i) {
-        state->apply_log(entries[i - storage->size()]);
+    if (strong_commit_size == weak_commit_size) {
+      for (auto i = committed_in_memory; i < entries.size(); ++i) {
+        //        storage->append_weak(entries[i]);
       }
-      last_commit_index = current_commit_index;
+
+      storage->weak_commit_size =
+          entries.size() - committed_in_memory + strong_commit_size;
+      storage->sync_log(entries);
+      storage->flush_metadata();
+      weak_commit_size = storage->weak_commit_size;
+
+      RAFT_LOG("commit %d -> %d", strong_commit_size, weak_commit_size);
+    } else {
+      for (auto i = committed_in_memory;
+           i < weak_commit_size - strong_commit_size + committed_in_memory;
+           ++i) {
+        state->apply_log(entries[i]);
+        //        storage->convert_to_commit(entries[i]);
+      }
+      // FIXME
+      storage->strong_commit_size = weak_commit_size;
+      storage->sync_log(entries);
+
+      storage->flush_metadata();
+      committed_in_memory += weak_commit_size - strong_commit_size;
+      strong_commit_size = weak_commit_size;
+      RAFT_LOG("apply: %d -> %d", strong_commit_size, weak_commit_size);
     }
-    RAFT_LOG("start new commit %d : %d", last_commit_index,
-             current_commit_index);
-    // TODO persist on disk
   }
 }
 
@@ -548,19 +641,29 @@ void raft<state_machine, command>::run_background_election() {
             std::chrono::system_clock::now() - last_seen_leader)
             .count() > 1000) {
       RAFT_LOG("timeout start new vote")
+      storage->role = candidate;
+      storage->flush_metadata();
       role = candidate;
 
       // Start new vote
+      storage->current_term = current_term + 1;
+      storage->vote_for = my_id;
+      storage->flush_metadata();
       ++current_term;
+
       init_new_term();
+
       vote_for_me.insert(my_id);
+
+      storage->vote_for = my_id;
+      storage->flush_metadata();
       vote_for = my_id;
 
       auto args = request_vote_args{
           current_term,
           my_id,
-          current_commit_index,
-          current_commit_term,
+          weak_commit_size,
+          weak_commit_term,
       };
       for (auto target = 0; target < rpc_clients.size(); ++target) {
         thread_pool->template addObjJob(this, &raft::send_request_vote, target,
@@ -585,16 +688,16 @@ void raft<state_machine, command>::run_background_commit() {
     auto args = append_entries_args<command>{
         current_term,
         my_id,
-        last_commit_index,
-        current_commit_index,
-        current_commit_term,
-        {{entries.begin() + last_commit_index - storage->size() + 1,
-          entries.end()}},
+        strong_commit_size,
+        weak_commit_size,
+        weak_commit_term,
+        {{entries.begin() + committed_in_memory, entries.end()}},
     };
-
+    // FIXME it's actually wrong
     auto snapshot_args = append_entries_args<command>{
-        current_term,        my_id,     last_commit_index, -1,
-        current_commit_term, {entries},
+        current_term,       my_id,
+        strong_commit_size, -1,
+        weak_commit_term,   {{entries.begin(), entries.end()}},
     };
 
     for (auto target = 0; target < rpc_clients.size(); ++target) {
@@ -646,14 +749,22 @@ void raft<state_machine, command>::run_background_ping() {
 template <typename state_machine, typename command>
 void raft<state_machine, command>::check_term(int term) {
   if (term > current_term) {
+    storage->current_term = term;
+    storage->flush_metadata();
     current_term = term;
+
     init_new_term();
   }
 }
 template <typename state_machine, typename command>
 void raft<state_machine, command>::init_new_term() {
-  vote_for = -1;
   vote_for_me.clear();
+
+  storage->vote_for = -1;
+  storage->leader_id = -1;
+  storage->role = follower;
+  storage->flush_metadata();
+  vote_for = -1;
   leader_id = -1;
   role = follower;
   commit_success.clear();

@@ -16,8 +16,8 @@ class request_vote_args {
  public:
   int term_;
   int candidate_id_;
-  int current_commit_index;
-  int current_commit_term;
+  int weak_commit_size;
+  int weak_commit_term;
 };
 
 marshall &operator<<(marshall &m, const request_vote_args &args);
@@ -57,9 +57,9 @@ class append_entries_args {
  public:
   int term_;
   int leader_id_;
-  int last_commit_index_;
-  int current_commit_index_;
-  int current_commit_term_;
+  int strong_commit_size;
+  int weak_commit_size;
+  int weak_commit_term;
   log_entry<command> entries_;
 };
 
@@ -68,9 +68,9 @@ marshall &operator<<(marshall &m, const append_entries_args<command> &args) {
   // Lab3: Your code here
   m << args.term_;
   m << args.leader_id_;
-  m << args.last_commit_index_;
-  m << args.current_commit_index_;
-  m << args.current_commit_term_;
+  m << args.strong_commit_size;
+  m << args.weak_commit_size;
+  m << args.weak_commit_term;
   m << args.entries_;
   return m;
 }
@@ -79,9 +79,9 @@ template <typename command>
 unmarshall &operator>>(unmarshall &u, append_entries_args<command> &args) {
   u >> args.term_;
   u >> args.leader_id_;
-  u >> args.last_commit_index_;
-  u >> args.current_commit_index_;
-  u >> args.current_commit_term_;
+  u >> args.strong_commit_size;
+  u >> args.weak_commit_size;
+  u >> args.weak_commit_term;
   u >> args.entries_;
   return u;
 }
