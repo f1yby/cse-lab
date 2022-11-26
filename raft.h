@@ -294,7 +294,7 @@ bool raft<state_machine, command>::new_command(command cmd, int &term,
 
   entries.push_back(cmd);
   // FIXME
-  storage->sync_log(entries);
+  storage->flush_log(entries, committed_in_memory);
   index = entries.size() - committed_in_memory + strong_commit_size;
   RAFT_LOG("receive new %d", index);
 
@@ -413,25 +413,17 @@ int raft<state_machine, command>::append_entries(
   if (arg.weak_commit_size == -1) {
     RAFT_LOG("install snapshot %d", arg.strong_commit_size);
     entries = arg.entries_.entries_;
-    // FIXME
-    committed_in_memory = strong_commit_size;
-    //    storage->clear_weak_commit();
-    // FIXME
-    storage->sync_log(entries);
-    for (int i = strong_commit_size; i < entries.size(); ++i) {
-      //      storage->append_weak(entries[i]);
-    }
+
     for (int i = strong_commit_size; i < arg.strong_commit_size; ++i) {
       state->apply_log(entries[i]);
-      //      storage->convert_to_commit(entries[i]);
     }
-
-    committed_in_memory += arg.strong_commit_size - strong_commit_size;
 
     storage->weak_commit_size = arg.weak_commit_size;
     storage->weak_commit_term = arg.weak_commit_term;
     storage->strong_commit_size = arg.strong_commit_size;
+    storage->flush_log(entries);
     storage->flush_metadata();
+    committed_in_memory = arg.strong_commit_size;
     weak_commit_size = arg.strong_commit_size;
     current_term = arg.weak_commit_term;
     strong_commit_size = arg.strong_commit_size;
@@ -458,16 +450,19 @@ int raft<state_machine, command>::append_entries(
     // Try Apply
     if (arg.strong_commit_size > strong_commit_size) {
       for (int i = 0; i < arg.strong_commit_size - strong_commit_size; ++i) {
-        //        storage->convert_to_commit(entries[i + committed_in_memory]);
         state->apply_log(entries[i + committed_in_memory]);
       }
 
       storage->strong_commit_size = arg.strong_commit_size;
-      storage->sync_log(entries);
+      storage->update_strong_commit_size(
+          entries, committed_in_memory,
+          arg.strong_commit_size - strong_commit_size);
       storage->flush_metadata();
       committed_in_memory += arg.strong_commit_size - strong_commit_size;
       strong_commit_size = arg.strong_commit_size;
-      // TODO do persistence
+
+      assert(committed_in_memory == strong_commit_size);
+      assert(weak_commit_size <= entries.size());
 
       RAFT_LOG("apply: %d -> %d", strong_commit_size, arg.strong_commit_size);
     }
@@ -488,17 +483,20 @@ int raft<state_machine, command>::append_entries(
       entries[i] = arg.entries_.entries_[j];
     }
 
-    // FIXME
-    storage->sync_log(entries);
     for (int i = 0; i < arg.weak_commit_size - strong_commit_size; ++i) {
       //      storage->append_weak(entries[i + committed_in_memory]);
     }
 
     // TODO do persistence
     RAFT_LOG("commit: %d -> %d", weak_commit_size, arg.weak_commit_size);
+
+    storage->flush_log(entries, committed_in_memory);
     storage->weak_commit_size = arg.weak_commit_size;
     storage->flush_metadata();
     weak_commit_size = arg.weak_commit_size;
+
+    assert(committed_in_memory == strong_commit_size);
+    assert(weak_commit_size <= entries.size());
 
     reply.term_ = current_term;
     reply.success_ = true;
@@ -506,7 +504,8 @@ int raft<state_machine, command>::append_entries(
     return 0;
   }
 
-  assert(false);
+  reply.term_ = current_term;
+  reply.success_ = true;
   return 0;
 }
 
@@ -537,19 +536,23 @@ void raft<state_machine, command>::handle_append_entries_reply(
 
   if (commit_success.size() > rpc_clients.size() / 2) {
     commit_success.clear();
+    // Commit new
     if (strong_commit_size == weak_commit_size) {
       for (auto i = committed_in_memory; i < entries.size(); ++i) {
         //        storage->append_weak(entries[i]);
       }
 
+      storage->flush_log(entries, committed_in_memory);
+
       storage->weak_commit_size =
           entries.size() - committed_in_memory + strong_commit_size;
-      storage->sync_log(entries);
       storage->flush_metadata();
       weak_commit_size = storage->weak_commit_size;
 
       RAFT_LOG("commit %d -> %d", strong_commit_size, weak_commit_size);
-    } else {
+    }
+    // Apply committed
+    else {
       for (auto i = committed_in_memory;
            i < weak_commit_size - strong_commit_size + committed_in_memory;
            ++i) {
@@ -558,11 +561,12 @@ void raft<state_machine, command>::handle_append_entries_reply(
       }
       // FIXME
       storage->strong_commit_size = weak_commit_size;
-      storage->sync_log(entries);
-
+      storage->update_strong_commit_size(entries, committed_in_memory,
+                                         weak_commit_size - strong_commit_size);
       storage->flush_metadata();
       committed_in_memory += weak_commit_size - strong_commit_size;
       strong_commit_size = weak_commit_size;
+
       RAFT_LOG("apply: %d -> %d", strong_commit_size, weak_commit_size);
     }
   }

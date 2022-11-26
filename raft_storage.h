@@ -55,7 +55,7 @@ class raft_storage {
     commit.close();
   }
 
-  void sync_log(std::vector<command> entries) {
+  void flush_log(const std::vector<command>& entries) {
     commit.open(commit_path, std::ios::out);
     last_commit_size = 0;
     for (int i = 0; i < strong_commit_size; ++i) {
@@ -71,6 +71,35 @@ class raft_storage {
     }
     commit.flush();
     commit.close();
+    flush_metadata();
+  }
+
+  void flush_log(const std::vector<command>& entries, int committed_in_memory) {
+    if (entries.empty()) {
+      return;
+    }
+    assert(last_commit_size == 8 * strong_commit_size);
+    truncate(commit_path.c_str(), last_commit_size);
+    commit.open(commit_path, std::ios::app);
+    for (int i = committed_in_memory; i < entries.size(); ++i) {
+      auto& e = entries[i];
+      int size = e.size();
+      auto buffer = std::string(size, '\0');
+      e.serialize(&buffer[0], size);
+      commit.write(reinterpret_cast<const char*>(&size), sizeof(size));
+      commit.write(buffer.c_str(), buffer.size());
+    }
+    commit.flush();
+    commit.close();
+  }
+
+  void update_strong_commit_size(const std::vector<command> &entries,
+                                 int committed_in_memory, int size) {
+    for (int i = 0; i < size; ++i) {
+      auto ii = i + committed_in_memory;
+      last_commit_size += entries[ii].size() + sizeof(entries[ii].size());
+    }
+    assert(last_commit_size == 8 * strong_commit_size);
     flush_metadata();
   }
 
