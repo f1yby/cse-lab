@@ -57,7 +57,7 @@ class append_entries_args {
  public:
   int term_;
   int leader_id_;
-  int strong_commit_size;
+  int strong_commit;
   int weak_commit_size;
   int weak_commit_term;
   log_entry<command> entries_;
@@ -68,7 +68,7 @@ marshall &operator<<(marshall &m, const append_entries_args<command> &args) {
   // Lab3: Your code here
   m << args.term_;
   m << args.leader_id_;
-  m << args.strong_commit_size;
+  m << args.strong_commit;
   m << args.weak_commit_size;
   m << args.weak_commit_term;
   m << args.entries_;
@@ -79,7 +79,7 @@ template <typename command>
 unmarshall &operator>>(unmarshall &u, append_entries_args<command> &args) {
   u >> args.term_;
   u >> args.leader_id_;
-  u >> args.strong_commit_size;
+  u >> args.strong_commit;
   u >> args.weak_commit_size;
   u >> args.weak_commit_term;
   u >> args.entries_;
@@ -97,7 +97,10 @@ unmarshall &operator>>(unmarshall &m, append_entries_reply &reply);
 
 class install_snapshot_args {
  public:
-  // Lab3: Your code here
+  int term_;
+  int leader_id_;
+  int strong_commit;
+  std::vector<char> data;
 };
 
 marshall &operator<<(marshall &m, const install_snapshot_args &args);
@@ -105,7 +108,7 @@ unmarshall &operator>>(unmarshall &m, install_snapshot_args &args);
 
 class install_snapshot_reply {
  public:
-  // Lab3: Your code here
+  int term_;
 };
 
 marshall &operator<<(marshall &m, const install_snapshot_reply &reply);

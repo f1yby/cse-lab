@@ -40,21 +40,27 @@ unmarshall &operator>>(unmarshall &m, append_entries_reply &args) {
 }
 
 marshall &operator<<(marshall &m, const install_snapshot_args &args) {
-  // Lab3: Your code here
+  m << args.term_;
+  m << args.leader_id_;
+  m << args.strong_commit;
+  m << args.data;
   return m;
 }
 
 unmarshall &operator>>(unmarshall &u, install_snapshot_args &args) {
-  // Lab3: Your code here
+  u >> args.term_;
+  u >> args.leader_id_;
+  u >> args.strong_commit;
+  u >> args.data;
   return u;
 }
 
 marshall &operator<<(marshall &m, const install_snapshot_reply &reply) {
-  // Lab3: Your code here
+  m << reply.term_;
   return m;
 }
 
 unmarshall &operator>>(unmarshall &u, install_snapshot_reply &reply) {
-  // Lab3: Your code here
+  u >> reply.term_;
   return u;
 }
