@@ -180,7 +180,6 @@ void fuseserver_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
                       size_t size, off_t off, struct fuse_file_info *fi) {
   auto aw = size_t{};
 
-  ;
   auto ret = chfs->write(ino, size, off, buf, aw);
 
   if (ret != chfs_client::OK) {
@@ -285,7 +284,6 @@ void fuseserver_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
   chfs->lookup(parent, name, found, ino);
 
   if (found) {
-    ;
 
     e.ino = ino;
     getattr(ino, e.attr);

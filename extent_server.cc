@@ -24,26 +24,24 @@ int extent_server::create(uint32_t type, extent_protocol::extentid_t &id) {
 int extent_server::put(extent_protocol::extentid_t id, std::string buf, int &) {
   id &= 0x7fffffff;
 
-  const char *cbuf = buf.c_str();
-  int size = buf.size();
-  im->write_file(id, cbuf, size);
+  auto size = buf.size();
+  im->write_file(id, buf.c_str(), size);
 
   return extent_protocol::OK;
 }
 
 int extent_server::get(extent_protocol::extentid_t id, std::string &buf) {
-  printf("extent_server: get %lld\n", id);
-
   id &= 0x7fffffff;
 
   uint32_t size = 0;
-  char *cbuf = NULL;
+  char *cbuf = nullptr;
 
   im->read_file(id, &cbuf, &size);
-  if (size == 0)
-    buf = "";
-  else {
-    buf.assign(cbuf, size);
+  if (size == 0) {
+    buf = {};
+  } else {
+    buf.resize(size, 0);
+    mempcpy(&buf[0], cbuf, size);
     free(cbuf);
   }
 
@@ -52,11 +50,9 @@ int extent_server::get(extent_protocol::extentid_t id, std::string &buf) {
 
 int extent_server::getattr(extent_protocol::extentid_t id,
                            extent_protocol::attr &a) {
-  printf("extent_server: getattr %lld\n", id);
-
   id &= 0x7fffffff;
 
-  extent_protocol::attr attr;
+  extent_protocol::attr attr{};
   memset(&attr, 0, sizeof(attr));
   im->get_attr(id, attr);
   a = attr;
@@ -65,8 +61,6 @@ int extent_server::getattr(extent_protocol::extentid_t id,
 }
 
 int extent_server::remove(extent_protocol::extentid_t id, int &) {
-  printf("extent_server: write %lld\n", id);
-
   id &= 0x7fffffff;
   im->remove_file(id);
 

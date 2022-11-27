@@ -29,7 +29,7 @@ int extent_server_dist::put(extent_protocol::extentid_t id, std::string buf,
   auto res = std::make_shared<chfs_command_raft::result>();
   std::unique_lock<std::mutex> l(res->mtx);
   leader()->new_command(
-      chfs_command_raft{chfs_command_raft::CMD_PUT, 0, 0, std::move(buf), res},
+      chfs_command_raft{chfs_command_raft::CMD_PUT, 0, id, std::move(buf), res},
       ignore, ignore);
   while (!res->done) {
     res->cv.wait(l);
@@ -43,7 +43,7 @@ int extent_server_dist::get(extent_protocol::extentid_t id, std::string &buf) {
   auto res = std::make_shared<chfs_command_raft::result>();
   std::unique_lock<std::mutex> l(res->mtx);
   leader()->new_command(
-      chfs_command_raft{chfs_command_raft::CMD_GET, 0, 0, {}, res}, ignore,
+      chfs_command_raft{chfs_command_raft::CMD_GET, 0,id,  {}, res}, ignore,
       ignore);
   res->cv.wait(l);
   buf = res->buf;

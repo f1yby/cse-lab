@@ -199,19 +199,6 @@ void inode_manager::read_file(uint32_t inum, char **buf_out, uint32_t *size) {
   }
   auto *buf = static_cast<char *>(malloc(BLOCK_SIZE));
 
-  //==>>
-  //  auto fsize = inode->size;
-  //  auto blocks = (fsize + BLOCK_SIZE - 1) / BLOCK_SIZE;
-  //  while (queue.size() != blocks) {
-  //    bm->read_block(queue.front(), buf);
-  //    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(buf)[i] !=
-  //    0;
-  //         ++i) {
-  //      queue.push_back(reinterpret_cast<uint32_t *>(buf)[i]);
-  //    }
-  //    queue.pop_front();
-  //  }
-  //==
   if (queue.size() == NDIRECT) {
     bm->read_block(queue.back(), buf);
     queue.pop_back();
@@ -220,7 +207,6 @@ void inode_manager::read_file(uint32_t inum, char **buf_out, uint32_t *size) {
       queue.push_back(reinterpret_cast<uint32_t *>(buf)[i]);
     }
   }
-  //==<<
 
   *size = inode->size;
   *buf_out = static_cast<char *>(malloc(inode->size));
@@ -254,18 +240,6 @@ void inode_manager::write_file(uint32_t inum, const char *buf, uint32_t size) {
     blocks.push_back(inode->blocks[i]);
   }
   auto *b = static_cast<char *>(malloc(BLOCK_SIZE));
-  //==>>
-  //  while (blocks.size() != old_blocks) {
-  //    bm->read_block(blocks.front(), b);
-  //    for (int i = 0; i < NINDIRECT && reinterpret_cast<uint32_t *>(b)[i] !=
-  //    0;
-  //         ++i) {
-  //      blocks.push_back(reinterpret_cast<uint32_t *>(b)[i]);
-  //    }
-  //    bm->free_block(blocks.front());
-  //    blocks.pop_front();
-  //  }
-  //====
   if (blocks.size() == NDIRECT) {
     bm->read_block(blocks.back(), b);
     bm->free_block(blocks.back());
@@ -277,36 +251,13 @@ void inode_manager::write_file(uint32_t inum, const char *buf, uint32_t size) {
       }
     }
   }
-  //==<<
+
   for (auto i : blocks) {
     bm->free_block(i);
   }
   blocks.clear();
   uint32_t wsize = 0;
 
-  //==>>
-  //  while (wsize < size && blocks.size()) {
-  //    auto i = bm->alloc_block_back();
-  //    bm->write_block(i, buf + wsize,
-  //                    size - wsize < BLOCK_SIZE ? size - wsize : BLOCK_SIZE);
-  //    wsize += BLOCK_SIZE;
-  //    blocks.push_back(i);
-  //  }
-  //  while (blocks.size() > NDIRECT) {
-  //    std::deque<uint32_t> nblocks;
-  //    while (blocks.size() >= NINDIRECT) {
-  //      auto i = bm->alloc_block_back();
-  //      bm->write_block(i, reinterpret_cast<const uint8_t *>(&blocks[0]));
-  //      nblocks.push_back(i);
-  //      blocks.erase(blocks.begin(), blocks.begin() + NINDIRECT);
-  //    }
-  //    auto i = bm->alloc_block_back();
-  //    bm->write_block(i, reinterpret_cast<uint8_t *>(&blocks[0]),
-  //                    sizeof(uint32_t) * blocks.size());
-  //    nblocks.push_back(i);
-  //    blocks = std::move(nblocks);
-  //  }
-  //====
   while (wsize < size && blocks.size() < NDIRECT - 1) {
     auto i = bm->alloc_block_back();
     bm->write_block(i, buf + wsize, size - wsize);
@@ -327,7 +278,6 @@ void inode_manager::write_file(uint32_t inum, const char *buf, uint32_t size) {
                     sizeof(uint32_t) * nb.size());
     blocks.push_back(i);
   }
-  //==<<
   bzero(inode->blocks, NDIRECT * sizeof(blockid_t));
   for (uint32_t i = 0; i < blocks.size(); ++i) {
     inode->blocks[i] = blocks[i];
