@@ -75,7 +75,6 @@ class raft_storage {
       auto ii = i + committed_in_memory;
       strong_commit_size += entries[ii].size() + sizeof(entries[ii].size());
     }
-    assert(strong_commit_size == 8 * strong_commit);
     flush_metadata();
   }
 

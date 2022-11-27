@@ -532,7 +532,7 @@ void raft<state_machine, command>::handle_append_entries_reply(
 template <typename state_machine, typename command>
 int raft<state_machine, command>::install_snapshot(
     install_snapshot_args args, install_snapshot_reply &reply) {
-  std::unique_lock l(mtx);
+  std::unique_lock<std::mutex> l(mtx);
   check_term(args.term_);
   if (args.term_ < current_term) {
     reply.term_ = current_term;
@@ -551,6 +551,11 @@ int raft<state_machine, command>::install_snapshot(
   state->apply_snapshot(args.data);
 
   reply.term_ = current_term;
+
+  RAFT_LOG("install snapshot: %d -> %d", strong_commit, args.strong_commit)
+
+  strong_commit = args.strong_commit;
+
   return 0;
 }
 
@@ -558,7 +563,7 @@ template <typename state_machine, typename command>
 void raft<state_machine, command>::handle_install_snapshot_reply(
     int node, const install_snapshot_args &arg,
     const install_snapshot_reply &reply) {
-  std::unique_lock l(mtx);
+  std::unique_lock<std::mutex> l(mtx);
   check_term(reply.term_);
 }
 
@@ -681,7 +686,6 @@ void raft<state_machine, command>::run_background_commit() {
     };
 
     for (auto target = 0; target < rpc_clients.size(); ++target) {
-      // FIXME it's actually snapshot
       if (need_snapshot.count(target)) {
         thread_pool->addObjJob(this, &raft::send_install_snapshot, target,
                                snapshot_args);
@@ -729,4 +733,5 @@ void raft<state_machine, command>::init_new_term() {
   role = follower;
   commit_success.clear();
 }
+
 #endif  // raft_h
