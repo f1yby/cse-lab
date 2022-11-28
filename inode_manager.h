@@ -18,7 +18,7 @@ typedef uint32_t blockid_t;
 // disk layer -----------------------------------------
 
 class disk {
- private:
+ public:
   unsigned char blocks[BLOCK_NUM][BLOCK_SIZE];
 
  public:
@@ -36,7 +36,7 @@ typedef struct superblock {
 } superblock_t;
 
 class block_manager {
- private:
+ public:
   disk *d;
   std::mutex m_;
 
@@ -86,7 +86,7 @@ typedef struct inode {
 } inode_t;
 
 class inode_manager {
- private:
+ public:
   block_manager *bm;
   struct inode *get_inode(uint32_t inum);
 

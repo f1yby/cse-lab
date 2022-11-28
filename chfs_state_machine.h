@@ -63,10 +63,16 @@ class chfs_state_machine : public raft_state_machine {
   virtual void apply_log(raft_command &cmd) override;
 
   // You don't need to implement this function.
-  virtual std::vector<char> snapshot() { return std::vector<char>(); }
+  virtual std::vector<char> snapshot() {
+    auto d = std::vector<char>(sizeof(es.im->bm->d->blocks));
+    memcpy(&d[0], es.im->bm->d->blocks, d.size());
+    return d;
+  }
 
   // You don't need to implement this function.
-  virtual void apply_snapshot(const std::vector<char> &) {}
+  virtual void apply_snapshot(const std::vector<char> &d) {
+    memcpy(es.im->bm->d->blocks, d.data(), d.size());
+  }
 
  private:
   extent_server es;

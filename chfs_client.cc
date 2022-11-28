@@ -178,6 +178,7 @@ int chfs_client::lookup(inum parent, const char *name, bool &found,
     }
   }
 
+  found = false;
   return NOENT;
 }
 

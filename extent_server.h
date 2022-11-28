@@ -8,7 +8,7 @@
 #include "inode_manager.h"
 
 class extent_server {
- protected:
+ public:
   inode_manager *im;
 
  public:
