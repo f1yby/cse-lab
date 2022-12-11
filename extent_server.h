@@ -1,39 +1,24 @@
 // this is the extent server
+#pragma once
 
-#ifndef extent_server_h
-#define extent_server_h
-
-#include <string>
 #include <map>
+#include <string>
+
 #include "extent_protocol.h"
 #include "inode_manager.h"
 
 class extent_server {
- protected:
-#if 0
-  typedef struct extent {
-    std::string data;
-    struct extent_protocol::attr attr;
-  } extent_t;
-  std::map <extent_protocol::extentid_t, extent_t> extents;
-#endif
+ public:
   inode_manager *im;
 
  public:
   extent_server();
-
-  int create(uint32_t type, extent_protocol::extentid_t &id);
-  int put(extent_protocol::extentid_t id, std::string, int &);
-  int get(extent_protocol::extentid_t id, std::string &);
-  int getattr(extent_protocol::extentid_t id, extent_protocol::attr &);
-  int remove(extent_protocol::extentid_t id, int &);
+  extent_protocol::status create(uint32_t type, extent_protocol::extentid_t &);
+  extent_protocol::status occupy(extent_protocol::extentid_t, uint32_t type);
+  extent_protocol::status put(extent_protocol::extentid_t, std::string,
+                              int &ignore);
+  extent_protocol::status get(extent_protocol::extentid_t, std::string &);
+  extent_protocol::status getattr(extent_protocol::extentid_t,
+                                  extent_protocol::attr &);
+  extent_protocol::status remove(extent_protocol::extentid_t id, int &ignore);
 };
-
-#endif 
-
-
-
-
-
-
-

@@ -4,5 +4,6 @@ log/
 *.o
 *.d
 *.log
-.clang-format
-raft_temp/
+.cache
+/.idea/workspace.xml
+/compile_commands.json

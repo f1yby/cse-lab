@@ -15,14 +15,10 @@ class extent_protocol {
     get,
     getattr,
     remove,
-    create
+    create,
   };
 
-  //add the new file type symlink.
-  enum types {
-    T_DIR = 1,
-    T_FILE,
-  };
+  enum types { T_DIR = 1, T_FILE, T_LINK };
 
   struct attr {
     uint32_t type;
@@ -33,9 +29,7 @@ class extent_protocol {
   };
 };
 
-inline unmarshall &
-operator>>(unmarshall &u, extent_protocol::attr &a)
-{
+inline unmarshall &operator>>(unmarshall &u, extent_protocol::attr &a) {
   u >> a.type;
   u >> a.atime;
   u >> a.mtime;
@@ -44,9 +38,7 @@ operator>>(unmarshall &u, extent_protocol::attr &a)
   return u;
 }
 
-inline marshall &
-operator<<(marshall &m, extent_protocol::attr a)
-{
+inline marshall &operator<<(marshall &m, extent_protocol::attr a) {
   m << a.type;
   m << a.atime;
   m << a.mtime;
@@ -55,4 +47,4 @@ operator<<(marshall &m, extent_protocol::attr a)
   return m;
 }
 
-#endif 
+#endif
