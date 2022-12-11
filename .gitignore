@@ -5,5 +5,5 @@ log/
 *.d
 *.log
 .cache
-/.idea/workspace.xml
+/.idea
 /compile_commands.json
