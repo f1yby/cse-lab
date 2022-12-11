@@ -2,20 +2,118 @@
 // A simple sequential MapReduce for WordCount
 //
 
-#include <string>
-#include <sstream>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <sstream>
+#include <string>
 #include <vector>
-#include <algorithm>
+
+namespace {
+std::string zero() { return "0"; }
+bool is_digital_string(const std::string &input) {
+  if (input.empty()) {
+    return false;
+  }
+  return std::all_of(input.begin(), input.end(),
+                     [](char c) { return isdigit(c); });
+}
+
+void plus_plus(std::string &number) {
+  // Check if it is a string of number
+  if (!is_digital_string(number)) {
+    return;
+  }
+
+  char of = 1;
+  for (int i = 0; i < number.size() && of; ++i) {
+    number[number.size() - 1 - i] += of;
+    if (!isdigit(number[number.size() - 1 - i])) {
+      number[number.size() - 1 - i] -= 10;
+      of = 1;
+    } else {
+      of = 0;
+    }
+  }
+  if (of) {
+    number.insert(number.begin(), '1');
+  }
+}
+
+void plus_equal(std::string &dst, const std::string &src) {
+  if (!is_digital_string(dst) || !is_digital_string(src)) {
+    return;
+  }
+
+  int dst_i = dst.size() - 1;
+  int src_i = src.size() - 1;
+
+  int of = 0;
+  while (dst_i >= 0 && src_i >= 0) {
+    dst[dst_i] += src[src_i] - '0' + of;
+    if (!isdigit(dst[dst_i])) {
+      of = 1;
+      dst[dst_i] -= 10;
+    } else {
+      of = 0;
+    }
+    --dst_i;
+    --src_i;
+  }
+  if (src_i >= 0) {
+    dst.insert(dst.begin(), src.begin(), src.begin() + src_i + 1);
+    dst_i = src_i;
+  }
+
+  while (dst_i >= 0 && of) {
+    dst[dst_i] += of;
+    if (!isdigit(dst[dst_i])) {
+      dst[dst_i] -= 10;
+      of = 1;
+    } else {
+      of = 0;
+    }
+    --dst_i;
+  }
+  if (of) {
+    dst.insert(dst.begin(), '1');
+  }
+}
+
+std::vector<std::string> split_words(const std::string &input) {
+  int start = 0;
+  int end = 0;
+  decltype(split_words(input)) result;
+
+  while (end < input.size() && !isalpha(input[end])) {
+    ++end;
+  }
+  start = end;
+
+  while (start != input.size()) {
+    if (!isalpha(input[end])) {
+      result.emplace_back(input.begin() + start, input.begin() + end);
+
+      while (end < input.size() && !isalpha(input[end])) {
+        ++end;
+      }
+      start = end;
+    } else {
+      ++end;
+    }
+  }
+
+  return result;
+}
+}  // namespace
 
 using namespace std;
 
-typedef struct {
-    string key;
-    string val;
-}
-KeyVal;
+struct KeyVal {
+  string key;
+  string val;
+};
 
 //
 // The map function is called once for each file of input. The first
@@ -24,11 +122,28 @@ KeyVal;
 // and look only at the contents argument. The return value is a slice
 // of key/value pairs.
 //
-vector<KeyVal> Map(const string &filename, const string &content)
-{
-    // Your code goes here
-    // Hints: split contents into an array of words.
+vector<KeyVal> Map(const string &filename, const string &content) {
+  // Your code goes here
+  // Hints: split contents into an array of words.
 
+  // Split
+  auto words = split_words(content);
+
+  // Construct KeyVal Map
+  map<string, string> k2v;
+  for (const auto &word : words) {
+    if (k2v.count(word) == 0) {
+      k2v.insert(make_pair(word, zero()));
+    }
+    plus_plus(k2v[word]);
+  }
+
+  // Convert to vec and return
+  decltype(Map(filename, content)) result;
+  for (const auto &kvp : k2v) {
+    result.push_back({kvp.first, kvp.second});
+  }
+  return result;
 }
 
 //
@@ -36,74 +151,76 @@ vector<KeyVal> Map(const string &filename, const string &content)
 // map tasks, with a list of all the values created for that key by
 // any map task.
 //
-string Reduce(const string &key, const vector <string> &values)
-{
-    // Your code goes here
-    // Hints: return the number of occurrences of the word.
-
+string Reduce(const string &key, const vector<string> &values) {
+  // Your code goes here
+  // Hints: return the number of occurrences of the word.
+  auto result = zero();
+  for (auto &value : values) {
+    plus_equal(result, value);
+  }
+  return result;
 }
 
-int main(int argc, char ** argv)
-{
-    if (argc < 2) {
-        cout << "Usage: mrsequential inputfiles...\n";
-        exit(1);
+int main(int argc, char **argv) {
+  //  auto dst=string ("5");
+  //  auto src = string ("95");
+  //  plus_equal(dst,src);
+
+  if (argc < 2) {
+    cout << "Usage: mrsequential inputfiles...\n";
+    exit(1);
+  }
+
+  vector<string> filename;
+  vector<KeyVal> intermediate;
+
+  //
+  // read each input file,
+  // pass it to Map,
+  // accumulate the intermediate Map output.
+  //
+
+  for (int i = 1; i < argc; ++i) {
+    string filename = argv[i];
+    string content;
+
+    // Read the whole file into the buffer.
+    getline(ifstream(filename), content, '\0');
+
+    vector<KeyVal> KVA = Map(filename, content);
+
+    intermediate.insert(intermediate.end(), KVA.begin(), KVA.end());
+  }
+
+  //
+  // a big difference from real MapReduce is that all the
+  // intermediate data is in one place, intermediate[],
+  // rather than being partitioned into NxM buckets.
+  //
+
+  sort(intermediate.begin(), intermediate.end(),
+       [](KeyVal const &a, KeyVal const &b) { return a.key < b.key; });
+
+  //
+  // call Reduce on each distinct key in intermediate[],
+  // and print the result to mr-out-0.
+  //
+
+  for (unsigned int i = 0; i < intermediate.size();) {
+    unsigned int j = i + 1;
+    for (;
+         j < intermediate.size() && intermediate[j].key == intermediate[i].key;)
+      j++;
+
+    vector<string> values;
+    for (unsigned int k = i; k < j; k++) {
+      values.push_back(intermediate[k].val);
     }
 
-    vector <string> filename;
-    vector <KeyVal> intermediate;
+    string output = Reduce(intermediate[i].key, values);
+    printf("%s %s\n", intermediate[i].key.data(), output.data());
 
-    //
-    // read each input file,
-    // pass it to Map,
-    // accumulate the intermediate Map output.
-    //
-
-    for (int i = 1; i < argc; ++i) {
-
-        string filename = argv[i];
-        string content;
-
-        // Read the whole file into the buffer.
-        getline(ifstream(filename), content, '\0');
-
-        vector <KeyVal> KVA = Map(filename, content);
-
-        intermediate.insert(intermediate.end(), KVA.begin(), KVA.end());
-
-    }
-
-    //
-    // a big difference from real MapReduce is that all the
-    // intermediate data is in one place, intermediate[],
-    // rather than being partitioned into NxM buckets.
-    //
-
-    sort(intermediate.begin(), intermediate.end(),
-    	[](KeyVal const & a, KeyVal const & b) {
-		return a.key < b.key;
-	});
-
-    //
-    // call Reduce on each distinct key in intermediate[],
-    // and print the result to mr-out-0.
-    //
-
-    for (unsigned int i = 0; i < intermediate.size();) {
-        unsigned int j = i + 1;
-        for (; j < intermediate.size() && intermediate[j].key == intermediate[i].key;)
-            j++;
-
-        vector < string > values;
-        for (unsigned int k = i; k < j; k++) {
-            values.push_back(intermediate[k].val);
-        }
-
-        string output = Reduce(intermediate[i].key, values);
-        printf("%s %s\n", intermediate[i].key.data(), output.data());
-
-        i = j;
-    }
-    return 0;
+    i = j;
+  }
+  return 0;
 }
-
