@@ -10,6 +10,19 @@
 
 #include "raft_protocol.h"
 
+namespace {
+ssize_t r_read(int fd, void* buffer, int size) {
+  errno = 0;
+  while (true) {
+    auto ret = read(fd, buffer, size);
+    if (ret == -1 && errno == EAGAIN) {
+      continue;
+    }
+    return ret;
+  }
+}
+}  // namespace
+
 template <typename command>
 class raft_storage {
  public:
@@ -81,18 +94,24 @@ class raft_storage {
   void load_log() {
     int size;
     std::string buffer;
-    commit.open(commit_path, std::ios::in);
-    commit.seekg(strong_commit_size);
-    while (commit.good() && !commit.eof()) {
-      commit.read(reinterpret_cast<char*>(&size), sizeof(size));
+    auto cfd = open(commit_path.c_str(), O_RDONLY);
+    lseek(cfd, strong_commit, SEEK_SET);
+    while (true) {
+      auto a = r_read(cfd, reinterpret_cast<char*>(&size), sizeof(size));
+      if (a <= 0) {
+        close(cfd);
+        return;
+      }
       buffer.resize(size);
-      commit.read(&buffer[0], size);
+      a = r_read(cfd, &buffer[0], size);
+      if (a <= 0) {
+        close(cfd);
+        return;
+      }
       command c;
       c.deserialize(buffer.c_str(), size);
       weak.push_back(c);
     }
-    commit.flush();
-    commit.close();
   }
 
   // Operations on snapshot

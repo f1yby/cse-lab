@@ -9,7 +9,7 @@
 
 #include "extent_protocol.h"
 
-#define DISK_SIZE (1024 * 1024 * 16)
+#define DISK_SIZE (1024 * 1024 * 64)
 #define BLOCK_SIZE 512
 #define BLOCK_NUM (DISK_SIZE / BLOCK_SIZE)
 
